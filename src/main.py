@@ -1,7 +1,7 @@
 # src/main.py
 
 from src.config import settings
-from src.utils.xeno_canto import XenoCantoDownloader
+from src.utils.xenocanto import XenoCantoDownloader
 
 
 def main():

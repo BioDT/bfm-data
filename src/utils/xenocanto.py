@@ -1,7 +1,5 @@
 # src/utils/xenocanto.py
 
-import io
-import json
 import os
 import tempfile
 from multiprocessing import Pool
@@ -12,11 +10,10 @@ import requests
 import torchaudio
 import torchaudio.transforms as T
 
-from src.config import settings
 from src.utils.downloader import Downloader
 
 
-class XenoCantoDownloader:
+class XenoCantoDownloader(Downloader):
     """
     Class for downloading and processing bird song recordings from Xeno-Canto.
     """
@@ -25,9 +22,7 @@ class XenoCantoDownloader:
     AUDIO_MIN_MS = 4000  # Minimum audio clip duration in milliseconds
     AUDIO_SAMPLE_RATE = 16000  # Sample rate for audio processing
 
-    URL = "https://xeno-canto.org/api/2/recordings"
-
-    def __init__(self, country, data_dir):
+    def __init__(self, data_dir, country=None):
         """
         Initialize the XenoCantoDownloader with country and data directory.
 
@@ -35,33 +30,11 @@ class XenoCantoDownloader:
             country (str): Country name for querying bird songs.
             data_dir (str): Directory path for storing downloaded data.
         """
-        self.country = country
-        self.downloader = Downloader(data_dir)
-        self.country_path = os.path.join(data_dir, "Xeno-Canto", country)
-        self.create_directories()
+        super().__init__(data_dir, "Xeno-Canto")
+        self.base_url = "https://xeno-canto.org/api/2/recordings"
+        self.test_country = country
 
-    def create_directories(self):
-        """
-        Create necessary directories if they don't exist.
-        """
-        Path(self.country_path).mkdir(parents=True, exist_ok=True)
-
-    def get_xeno_canto_page(query, page: int = 1):
-        """
-        Fetch a specific page of bird song recordings from the xeno-canto API.
-
-        Args:
-            query (str): The query string to search for bird recordings.
-            page (int): Page number for paginated API results. Default is 1.
-
-        Returns:
-            dict: The JSON response from the xeno-canto API containing bird recordings.
-        """
-        params = {"query": query, "page": page}
-        response = requests.get(url=XenoCantoDownloader.URL, params=params)
-        return response.json()
-
-    def get_bird_info(self, page: int = 1):
+    def get_xeno_canto_recordings(self, country, page: int = 1):
         """
         Fetch bird song information from xeno-canto API.
 
@@ -72,9 +45,14 @@ class XenoCantoDownloader:
             list: A list of acceptable bird recordings depends on our parameters.
         """
 
-        query = f"cnt:{self.country} q_gt:C type:song"
-        json_response = XenoCantoDownloader.get_xeno_canto_page(query, page)
-        num_pages = json_response["numPages"]
+        # cnt (str): The country where the recording was made
+        # q_ct (str): The quality rating for the recording sould be higher than. options: 'A', 'B', 'C', 'D', 'E'
+        # type (str) = The sound type of the recording. options: 'call', 'song', and etc.
+
+        query = f"cnt:{country} q_gt:C type:song"
+        params = {"query": query, "page": page}
+        json_response = self.get_base_url_page(params)
+        num_pages = json_response.get("numPages", 1)
 
         def is_acceptable(recording):
             """
@@ -91,38 +69,66 @@ class XenoCantoDownloader:
         ]
 
         if page < num_pages:
-            recordings.extend(self.get_bird_info(page + 1))
+            recordings.extend(self.get_xeno_canto_recordings(country, page + 1))
 
         return recordings
 
-    def download_bird_songs(self):
+    def download(self, test=False):
+        """
+        Download bird songs for all the countries. Create also the country's directory.
+        """
+        if test:
+            country = self.test_country
+            country_path = os.path.join(self.base_path, country)
+            Path(country_path).mkdir(parents=True, exist_ok=True)
+            self.download_sounds_per_country(country, country_path)
+        else:
+            countries = ["Afghanistan", "Albania"]
+            for country in countries:
+                if country:
+                    country_path = os.path.join(self.base_path, country)
+                else:
+                    country_path = self.base_path
+                Path(country_path).mkdir(parents=True, exist_ok=True)
+                self.download_sounds_per_country(country, country_path)
+
+    def download_sounds_per_country(self, country, country_path):
         """
         Download bird songs for the specified country.
+
+        Args:
+            country (str): The name of the specified country.
+            country_path (str): Country's directory path for saving the files.
         """
-        recordings = self.get_bird_info()
+        recordings = self.get_xeno_canto_recordings(country)
         if not recordings:
             return
 
         with Pool(processes=10) as pool:
-            pool.map(self.download_process_recording, recordings)
+            pool.map(
+                self.download_process_recording,
+                [(recording, country_path) for recording in recordings],
+            )
 
-    def download_process_recording(self, recording):
+    def download_process_recording(self, args):
         """
         Download and process a single bird song recording.
 
         Args:
             recording (dict): A recording entry from the API response.
         """
+        recording, country_path = args
+
         file_url = recording["file"]
         file_name = recording["file-name"]
         species_name = f"{recording['gen']} {recording['sp']}"
-        species_path = os.path.join(self.country_path, species_name)
+        species_path = os.path.join(country_path, species_name)
         base_name = os.path.splitext(file_name)[0]
         if not os.path.exists(species_path):
             Path(species_path).mkdir(parents=True, exist_ok=True)
 
         existing_files = [
-            f for f in os.listdir(species_path) if f.startswith(base_name)
+            file for file in os.listdir(species_path) if file.startswith(base_name)
         ]
         if existing_files:
             return
@@ -157,7 +163,7 @@ class XenoCantoDownloader:
         Args:
             waveform (Tensor): The waveform data.
             base_name (str): The base name for the output files.
-            species_path (str): Directory path for saving the files.
+            species_path (str): Species's directory path for saving the files.
         """
         audio_length = waveform.size(1) / self.AUDIO_SAMPLE_RATE * 1000
 
@@ -179,7 +185,7 @@ class XenoCantoDownloader:
         Args:
             waveform (Tensor): The waveform data.
             base_name (str): The base name for the output files.
-            species_path (str): Directory path for saving the files.
+            species_path (str): Species's directory path for saving the files.
             audio_length (float): The total duration of the audio in milliseconds.
         """
         for pos in range(0, int(audio_length), self.AUDIO_MAX_MS):
@@ -192,12 +198,3 @@ class XenoCantoDownloader:
                 break
             section_name = os.path.join(species_path, f"{base_name}.{pos}.wav")
             torchaudio.save(section_name, section, self.AUDIO_SAMPLE_RATE)
-
-    def download_all():
-        """
-        Download bird songs fror all the countries.
-        """
-        countries = [country.name for country in pycountry.countries]
-        for country in countries:
-            xeno_canto_downloader = XenoCantoDownloader(country, settings.DATA_DIR)
-            xeno_canto_downloader.download_bird_songs()

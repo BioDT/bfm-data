@@ -169,3 +169,6 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+# folder data that contains all the files(images, sounds, etc) from sources
+data

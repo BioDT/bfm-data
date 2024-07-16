@@ -172,3 +172,6 @@ pyrightconfig.json
 
 # folder data that contains all the files(images, sounds, etc) from sources
 data
+
+# folder that contains the credentials for copernicus api
+src/config/era5_config

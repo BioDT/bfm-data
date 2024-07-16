@@ -14,12 +14,11 @@ class iNaturalistDownloader(Downloader):
     A class to handle downloading data from iNaturalist.
     """
 
-    def __init__(self, data_dir):
+    def __init__(self, data_dir: str):
         """
-        Initialize the iNaturalistDownloader with country and data directory.
+        Initialize the iNaturalistDownloader.
 
         Args:
-            country (str): Country name for querying data.
             data_dir (str): Directory path for storing downloaded data.
         """
         super().__init__(data_dir, "iNaturalist")
@@ -55,24 +54,56 @@ class iNaturalistDownloader(Downloader):
             1 if json_response["total_results"] % json_response["per_page"] != 0 else 0
         )
 
-        observations = [observation for observation in json_response["results"]]
+        observations = json_response["results"]
+        data = []
+
+        self.process_and_download_observations(observations, data)
 
         if page < num_pages:
-            observations.extend(self.get_observations(page + 1))
+            data.extend(self.get_observations(page + 1))
 
-        return observations
+        return data
 
-    def download_save_observations(self, observations, filename):
+    def download_save_observations(self):
         """
-        Save observations to a CSV file.
+        Get the observations and save them to a CSV file.
+        """
+        data = self.get_observations()
+
+        if data:
+            self.save_to_csv(data, os.path.join(self.data_dir, "iNaturalist.csv"))
+
+    def process_and_download_observations(self, observations: list, data: str):
+        """
+        Process and download the observations.
 
         Args:
             observations (list): List of observations.
             filename (str): Name of the CSV file to save the observations.
         """
-        data = []
         for observation in observations:
             taxon = observation.get("taxon", {})
+            taxonomy_ranks = ["kingdom", "phylum", "class", "order", "family", "genus"]
+            taxonomy = {}
+
+            ancestors = (
+                observation.get("identifications", [{}])[0]
+                .get("taxon", {})
+                .get("ancestors", [{}])
+            )
+            for ancestor in ancestors:
+                rank = ancestor.get("rank", "")
+                name_ = ancestor.get("name", "")
+                if rank in taxonomy_ranks:
+                    taxonomy[rank] = name_
+
+            kindgom = taxonomy["kingdom"]
+            phylum = taxonomy["phylum"]
+            class_ = taxonomy["class"]
+            order = taxonomy["order"]
+            family = taxonomy["family"]
+            genus = taxonomy["genus"]
+
             for photo_counter, photo in enumerate(
                 observation.get("photos", []), start=1
             ):
@@ -81,10 +112,10 @@ class iNaturalistDownloader(Downloader):
                 country_name = self.get_country_from_coordinates(
                     observation["geojson"]["coordinates"]
                 )
+                observation_id = observation["id"]
                 taxon_name = taxon.get("iconic_taxon_name", "Unknown")
                 preferred_common_name = taxon.get("preferred_common_name", "Uknown")
-                name = taxon.get("name", "Unknown")
-                observation_id = observation["id"]
+                species = taxon.get("name", "Unknown")
 
                 taxon_path = os.path.join(self.base_path, country_name, taxon_name)
                 if not os.path.exists(taxon_path):
@@ -95,7 +126,7 @@ class iNaturalistDownloader(Downloader):
 
                 image_name = os.path.join(
                     taxon_path,
-                    f"{preferred_common_name}_{name}_{observation_id}_{photo_counter}.jpg",
+                    f"{preferred_common_name}_{species}_{observation_id}_{photo_counter}.jpg",
                 )
 
                 if os.path.exists(image_name):
@@ -104,10 +135,16 @@ class iNaturalistDownloader(Downloader):
                 data.append(
                     {
                         "Observation_id": observation_id,
-                        "Taxon": taxon_name,
-                        "preferred_common_name": preferred_common_name,
-                        "Name": name,
-                        "Species_Taxon_id": taxon["min_species_taxon_id"],
+                        "Preferred_common_name": preferred_common_name,
+                        "id": taxon["id"],
+                        "Kingdom": kindgom,
+                        "Phylum": phylum,
+                        "Class": class_,
+                        "Order": order,
+                        "Family": family,
+                        "Genus": genus,
+                        "Species": species,
+                        "Country": country_name,
                         "Place": observation["place_guess"],
                         "Coordinates": observation["geojson"]["coordinates"],
                         "Photo_url": photo_url,
@@ -116,12 +153,8 @@ class iNaturalistDownloader(Downloader):
                 )
 
                 self.download_file(photo_url, image_name)
-        if data:
-            self.save_to_csv(data, filename)
-        else:
-            return
 
-    def get_country_from_coordinates(self, coords):
+    def get_country_from_coordinates(self, coords: str):
         """
         Returns the country associated with those coordinates using the Nominatim geocoding service.
 

@@ -29,19 +29,20 @@ class Downloader:
         self.source = source
         self.base_path = os.path.join(data_dir, source)
 
-    def get_base_url_page(self, params):
+    def get_base_url_page(self, params: str):
         """
         Fetch a page from the a source's API.
 
         Args:
             query (str): The query string to search for specific data.
-            page (int): Page number for paginated API results. Default is 1.
 
         Returns:
             dict: The JSON response from the source's API containing the data.
         """
         request = requests.Request("GET", url=self.base_url, params=params)
         prepared_request = request.prepare()
+
+        print(prepared_request.url)
 
         session = requests.Session()
         response = session.send(prepared_request)
@@ -51,24 +52,41 @@ class Downloader:
         else:
             response.raise_for_status()
 
-    def save_to_csv(self, data, path_with_filename):
+    def save_to_csv(self, data: list, filename: str):
         """
         Save data to a CSV file.
 
         Parameters:
         data (list): The list of data to be saved.
-        path_with_filename (str): The path including the filename where the CSV will be saved.
+        filename (str): The path including the filename where the CSV will be saved.
 
         """
-        if not data:
-            return
+
         keys = data[0].keys()
-        with open(path_with_filename, mode="w", newline="") as file:
+
+        if os.path.exists(filename):
+            with open(filename, mode="r", newline="", encoding="utf-8") as file:
+                reader = csv.DictReader(file)
+                existing_data = list(reader)
+        else:
+            existing_data = []
+
+        data_ = [tuple(item.items()) for item in data]
+        existing_data_ = [tuple(item.items()) for item in existing_data]
+
+        unique_data = set(existing_data_)
+
+        for item in data_:
+            if item not in unique_data:
+                unique_data.add(item)
+                existing_data.append(dict(item))
+
+        with open(filename, mode="w", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=keys)
             writer.writeheader()
-            writer.writerows(data)
+            writer.writerows(existing_data)
 
-    def download_file(self, url, filename):
+    def download_file(self, url: str, filename: str):
         """
         Download a file from the given URL and save it to the specified filename.
 

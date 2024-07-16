@@ -1,0 +1,39 @@
+# src/utils/mapoflife.py
+
+import os
+
+from src.utils.downloader import Downloader
+
+
+class MOL(Downloader):
+    """
+    A class to handle downloading data from Map of Life.
+    """
+
+    def __init__(self, data_dir: str):
+        """
+        Initialize the MOL.
+
+        Args:
+            data_dir (str): Directory path for storing downloaded data.
+        """
+        super().__init__(data_dir, "MOP")
+        self.base_url = "https://api.mol.org/1.x/species/info"
+
+    def get_save_data(self, scientific_name: str, filename: str):
+
+        params = {"scientificname": scientific_name}
+
+        json_response = self.get_base_url_page(params)
+
+        data = []
+        for _ in json_response:
+            description = _["info"][0]["content"]
+            formatted_description = description.replace("\n", " ").replace("\r", "")
+
+        data.append(
+            {"scientific name": scientific_name, "description": formatted_description}
+        )
+
+        if data:
+            self.save_to_csv(data, os.path.join(self.data_dir, filename))

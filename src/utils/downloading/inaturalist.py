@@ -1,12 +1,11 @@
-# src/utils/inaturalist.py
+# src/utils/downloading/inaturalist.py
 
 import os
-from multiprocessing import Pool
 from pathlib import Path
 
 from geopy.geocoders import Nominatim
 
-from src.utils.downloader import Downloader
+from src.utils.downloading.downloader import Downloader
 
 
 class iNaturalistDownloader(Downloader):
@@ -21,7 +20,7 @@ class iNaturalistDownloader(Downloader):
         Args:
             data_dir (str): Directory path for storing downloaded data.
         """
-        super().__init__(data_dir, "iNaturalist")
+        super().__init__(data_dir, "Life")
         self.base_url = "https://api.inaturalist.org/v1/observations"
         self.geolocator = Nominatim(user_agent="iNaturalistdata")
 
@@ -55,31 +54,18 @@ class iNaturalistDownloader(Downloader):
         )
 
         observations = json_response["results"]
-        data = []
 
-        self.process_and_download_observations(observations, data)
+        self.process_and_download_observations(observations)
 
         if page < num_pages:
-            data.extend(self.get_observations(page + 1))
+            self.get_observations(page + 1)
 
-        return data
-
-    def download_save_observations(self):
-        """
-        Get the observations and save them to a CSV file.
-        """
-        data = self.get_observations()
-
-        if data:
-            self.save_to_csv(data, os.path.join(self.data_dir, "iNaturalist.csv"))
-
-    def process_and_download_observations(self, observations: list, data: str):
+    def process_and_download_observations(self, observations: list):
         """
         Process and download the observations.
 
         Args:
             observations (list): List of observations.
-            filename (str): Name of the CSV file to save the observations.
         """
         for observation in observations:
             taxon = observation.get("taxon", {})
@@ -97,45 +83,47 @@ class iNaturalistDownloader(Downloader):
                 if rank in taxonomy_ranks:
                     taxonomy[rank] = name_
 
-            kindgom = taxonomy["kingdom"]
-            phylum = taxonomy["phylum"]
-            class_ = taxonomy["class"]
-            order = taxonomy["order"]
-            family = taxonomy["family"]
-            genus = taxonomy["genus"]
+            kindgom = taxonomy.get("kindgom", "Unknown")
+            phylum = taxonomy.get("phylum", "Unknown")
+            class_ = taxonomy.get("class", "Unknown")
+            order = taxonomy.get("order", "Unknown")
+            family = taxonomy.get("family", "Unknown")
+            genus = taxonomy.get("genus", "Unknown")
 
             for photo_counter, photo in enumerate(
                 observation.get("photos", []), start=1
             ):
 
                 photo_url = photo["url"].replace("square", "medium")
+                if not photo_url.startswith("https://"):
+                    continue
                 country_name = self.get_country_from_coordinates(
-                    observation["geojson"]["coordinates"]
+                    observation.get("geojson", {}).get("coordinates", [])
                 )
-                observation_id = observation["id"]
-                taxon_name = taxon.get("iconic_taxon_name", "Unknown")
-                preferred_common_name = taxon.get("preferred_common_name", "Uknown")
-                species = taxon.get("name", "Unknown")
-
-                taxon_path = os.path.join(self.base_path, country_name, taxon_name)
-                if not os.path.exists(taxon_path):
-                    Path(taxon_path).mkdir(parents=True, exist_ok=True)
+                observation_id = observation.get("id", "Unknown")
+                preferred_common_name = taxon.get("preferred_common_name", "Unknown")
+                scientific_name = taxon.get("name", "Unknown")
+                scientific_name_path = os.path.join(
+                    self.base_path, country_name, scientific_name
+                )
+                if not os.path.exists(scientific_name_path):
+                    Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
 
                 if not photo_url.startswith("https://"):
                     return
 
                 image_name = os.path.join(
-                    taxon_path,
-                    f"{preferred_common_name}_{species}_{observation_id}_{photo_counter}.jpg",
+                    scientific_name_path,
+                    f"{preferred_common_name}_{scientific_name}_{observation_id}_{photo_counter}.jpg",
                 )
 
                 if os.path.exists(image_name):
                     continue
 
-                data.append(
+                species_data = [
                     {
                         "Observation_id": observation_id,
-                        "Preferred_common_name": preferred_common_name,
+                        "Common_name": preferred_common_name,
                         "id": taxon["id"],
                         "Kingdom": kindgom,
                         "Phylum": phylum,
@@ -143,27 +131,30 @@ class iNaturalistDownloader(Downloader):
                         "Order": order,
                         "Family": family,
                         "Genus": genus,
-                        "Species": species,
+                        "Scientific_name": scientific_name,
                         "Country": country_name,
                         "Place": observation["place_guess"],
                         "Coordinates": observation["geojson"]["coordinates"],
                         "Photo_url": photo_url,
                         "Photo_dimensions": " 375x500",
                     }
-                )
+                ]
 
                 self.download_file(photo_url, image_name)
+                self.save_to_csv(
+                    species_data,
+                    os.path.join(scientific_name_path, f"{preferred_common_name}.csv"),
+                )
 
     def get_country_from_coordinates(self, coords: str):
         """
         Returns the country associated with those coordinates using the Nominatim geocoding service.
 
-        Parameters:
-        coords (str): A string representing the coordinates in the format '[longitude, latitude]'.
+        Args:
+            coords (str): A string representing the coordinates in the format '[longitude, latitude]'.
 
         Returns:
-        str: The name of the country corresponding to the given coordinates.
-        If the country cannot be determined, returns 'Unknown'.
+            str: The name of the country corresponding to the given coordinates.
         """
         longitude, latitude = coords
         location = self.geolocator.reverse((latitude, longitude), language="en")

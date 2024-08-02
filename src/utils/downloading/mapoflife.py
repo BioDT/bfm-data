@@ -1,8 +1,10 @@
-# src/utils/mapoflife.py
+# src/utils/downloading/mapoflife.py
 
 import os
 
-from src.utils.downloader import Downloader
+import pandas as pd
+
+from src.utils.downloading.downloader import Downloader
 
 
 class MOL(Downloader):
@@ -17,7 +19,7 @@ class MOL(Downloader):
         Args:
             data_dir (str): Directory path for storing downloaded data.
         """
-        super().__init__(data_dir, "MOP")
+        super().__init__(data_dir, "Life")
         self.base_url = "https://api.mol.org/1.x/species/info"
 
     def get_save_data(self, scientific_name: str, filename: str):
@@ -32,8 +34,5 @@ class MOL(Downloader):
             formatted_description = description.replace("\n", " ").replace("\r", "")
 
         data.append(
-            {"scientific name": scientific_name, "description": formatted_description}
+            {"Scientific_name": scientific_name, "description": formatted_description}
         )
-
-        if data:
-            self.save_to_csv(data, os.path.join(self.data_dir, filename))

@@ -42,8 +42,6 @@ class Downloader:
         request = requests.Request("GET", url=self.base_url, params=params)
         prepared_request = request.prepare()
 
-        print(prepared_request.url)
-
         session = requests.Session()
         response = session.send(prepared_request)
 
@@ -57,8 +55,8 @@ class Downloader:
         Save data to a CSV file.
 
         Parameters:
-        data (list): The list of data to be saved.
-        filename (str): The path including the filename where the CSV will be saved.
+            data (list): The list of data to be saved.
+            filename (str): The path including the filename where the CSV will be saved.
 
         """
 
@@ -71,8 +69,15 @@ class Downloader:
         else:
             existing_data = []
 
-        data_ = [tuple(item.items()) for item in data]
-        existing_data_ = [tuple(item.items()) for item in existing_data]
+        def make_hashable(item):
+            if isinstance(item, list):
+                return tuple(make_hashable(i) for i in item)
+            elif isinstance(item, dict):
+                return tuple((k, make_hashable(v)) for k, v in item.items())
+            return item
+
+        data_ = [make_hashable(item) for item in data]
+        existing_data_ = [make_hashable(item) for item in existing_data]
 
         unique_data = set(existing_data_)
 

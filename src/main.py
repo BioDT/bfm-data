@@ -1,13 +1,16 @@
 # src/main.py
 
-from concurrent.futures import ProcessPoolExecutor
+import concurrent.futures
+import threading
 
 from src.config import settings
-from src.utils.bold import BOLDDownloader
-from src.utils.era5 import ERA5Downloader
-from src.utils.inaturalist import iNaturalistDownloader
-from src.utils.mapoflife import MOL
-from src.utils.xenocanto import XenoCantoDownloader
+from src.helpers.monitor import get_folder_size, monitor_folder_size
+from src.utils.downloading.bold import BOLDDownloader
+from src.utils.downloading.era5 import ERA5Downloader
+from src.utils.downloading.inaturalist import iNaturalistDownloader
+from src.utils.downloading.mapoflife import MOL
+from src.utils.downloading.xenocanto import XenoCantoDownloader
+from src.utils.merge_data import processing
 
 
 def era5():
@@ -32,7 +35,7 @@ def xeno_canto():
 
 def iNaturalist():
     iNaturalist = iNaturalistDownloader(settings.DATA_DIR)
-    iNaturalist.download_save_observations()
+    iNaturalist.get_observations()
 
 
 def BOLD():
@@ -46,7 +49,26 @@ def mapoflife():
 
 
 def main():
-    pass
+
+    print(
+        f"Initial folder size: {get_folder_size(settings.LIFE_DIR) / (1024 * 1024):.2f} MB"
+    )
+
+    monitoring_thread = threading.Thread(
+        target=monitor_folder_size, args=(settings.LIFE_DIR,)
+    )
+    monitoring_thread.daemon = True
+    monitoring_thread.start()
+
+    functions = [iNaturalist, xeno_canto, BOLD]
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(fn) for fn in functions]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Function raised an exception: {e}")
 
 
 if __name__ == "__main__":

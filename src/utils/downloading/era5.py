@@ -1,9 +1,10 @@
-# src/utils/era5.py
+# src/utils/downloading/era5.py
 
 import cdsapi
+import xarray as xr
 
 from src.helpers.era5_api_config import ERA5ApiConfigurator
-from src.utils.downloader import Downloader
+from src.utils.downloading.downloader import Downloader
 
 
 class ERA5Downloader(Downloader):

@@ -1,18 +1,15 @@
-# src/utils/xenocanto.py
+# src/utils/downloading/xenocanto.py
 
 import os
 import tempfile
-from multiprocessing import Pool
 from pathlib import Path
 
-import librosa
 import pycountry
 import requests
-import torch
 import torchaudio
 import torchaudio.transforms as T
 
-from src.utils.downloader import Downloader
+from src.utils.downloading.downloader import Downloader
 
 
 class XenoCantoDownloader(Downloader):
@@ -30,7 +27,7 @@ class XenoCantoDownloader(Downloader):
             country (str): Country name for querying bird songs.
             data_dir (str): Directory path for storing downloaded data.
         """
-        super().__init__(data_dir, "Xeno-Canto")
+        super().__init__(data_dir, "Life")
         self.base_url = "https://xeno-canto.org/api/2/recordings"
 
     def get_xeno_canto_recordings(self, country: str, page: int = 1):
@@ -97,11 +94,8 @@ class XenoCantoDownloader(Downloader):
         if not recordings:
             return
 
-        with Pool(processes=10) as pool:
-            pool.map(
-                self.download_process_recording,
-                [(recording, country_path) for recording in recordings],
-            )
+        for recording in recordings:
+            self.download_process_recording((recording, country_path))
 
     def download_process_recording(self, args: dict):
         """
@@ -114,16 +108,18 @@ class XenoCantoDownloader(Downloader):
 
         file_url = recording.get("file", "Unknown")
         file_name = recording.get("file-name", "Unknown")
-        species_name = (
+        scientific_name = (
             f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}"
         )
-        species_path = os.path.join(country_path, species_name)
+        scientific_name_path = os.path.join(country_path, scientific_name)
         base_name = os.path.splitext(file_name)[0]
-        if not os.path.exists(species_path):
-            Path(species_path).mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(scientific_name_path):
+            Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
 
         existing_files = [
-            file for file in os.listdir(species_path) if file.startswith(base_name)
+            file
+            for file in os.listdir(scientific_name_path)
+            if file.startswith(base_name)
         ]
         if existing_files:
             return
@@ -149,28 +145,29 @@ class XenoCantoDownloader(Downloader):
             )
             waveform = resampler(waveform)
 
-        self.save_audio(waveform, base_name, species_path)
+        self.save_audio(waveform, base_name, scientific_name_path)
         data = []
         id = recording.get("id", "Uknown")
         group = recording.get("group", "Uknown")
         country = recording.get("cnt", "Uknown")
         lat = recording.get("lat", "0.0")
         lon = recording.get("lng", "0.0")
-        coordinates = f"[{lat}, {lon}]"
+        coordinates = f"[{lon}, {lat}]"
         preferred_common_name = recording.get("en", "Uknown")
         data.append(
             {
                 "id": id,
                 "Group": group,
-                "Species": species_name,
-                "Preferred_common_name": preferred_common_name,
+                "Scientific_name": scientific_name,
+                "Common_name": preferred_common_name,
                 "Country": country,
                 "Coordinates": coordinates,
+                "audio": file_url,
             }
         )
-        self.save_to_csv(data, os.path.join(self.data_dir, "xeno_canto.csv"))
+        self.save_to_csv(data, os.path.join(scientific_name_path, f"{base_name}.csv"))
 
-    def save_audio(self, waveform: T, base_name: str, species_path: str):
+    def save_audio(self, waveform: T, base_name: str, scientific_name_path: str):
         """
         Save the waveform as .wav files.
 
@@ -180,35 +177,7 @@ class XenoCantoDownloader(Downloader):
             species_path (str): Species's directory path for saving the files.
         """
         torchaudio.save(
-            os.path.join(species_path, f"{base_name}.wav"),
+            os.path.join(scientific_name_path, f"{base_name}.wav"),
             waveform,
             self.AUDIO_SAMPLE_RATE,
         )
-
-    def reduce_noise(self, waveform: T):
-        """
-        Reduce noise in the given waveform using pre-emphasis filtering.
-
-        Args:
-            waveform (Tensor): The waveform data.
-
-        Returns:
-            Tensor: The noise-reduced waveform tensor.
-        """
-        y = waveform.numpy()[0]
-        y_denoised = librosa.effects.preemphasis(y)
-        return torch.tensor(y_denoised).unsqueeze(0)
-
-    def normalize_audio(self, waveform: T):
-        """
-        Normalize the given waveform to have zero mean and unit variance.
-
-        Args:
-            waveform (Tensor): The waveform data.
-
-        Returns:
-            Tensor: The normalized waveform tensor.
-        """
-        y = waveform.numpy()[0]
-        y_normalized = librosa.util.normalize(y)
-        return torch.tensor(y_normalized).unsqueeze(0)

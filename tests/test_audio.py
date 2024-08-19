@@ -4,8 +4,8 @@ import os
 import unittest
 from urllib import request
 
-from src.utils.downloading.xenocanto import XenoCantoDownloader
-from src.utils.preprocessing.audio import process_audio
+from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
+from src.data_preprocessing.process import process_audio
 
 
 class TestAudio(unittest.TestCase):

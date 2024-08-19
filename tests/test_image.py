@@ -5,7 +5,7 @@ import os
 import unittest
 from urllib import request
 
-from src.utils.downloading.inaturalist import iNaturalistDownloader
+from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
 from src.utils.preprocessing.image import process_image
 
 

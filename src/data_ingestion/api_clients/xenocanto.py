@@ -1,4 +1,4 @@
-# src/utils/downloading/xenocanto.py
+# src/data_ingestion/api_clients/xenocanto.py
 
 import os
 import tempfile
@@ -9,7 +9,7 @@ import requests
 import torchaudio
 import torchaudio.transforms as T
 
-from src.utils.downloading.downloader import Downloader
+from src.data_ingestion.api_clients.downloader import Downloader
 
 
 class XenoCantoDownloader(Downloader):

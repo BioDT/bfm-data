@@ -1,11 +1,11 @@
-# src/utils/downloading/inaturalist.py
+# src/data_ingestion/api_clients/inaturalist.py
 
 import os
 from pathlib import Path
 
 from geopy.geocoders import Nominatim
 
-from src.utils.downloading.downloader import Downloader
+from src.data_ingestion.api_clients.downloader import Downloader
 
 
 class iNaturalistDownloader(Downloader):

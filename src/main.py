@@ -4,13 +4,15 @@ import concurrent.futures
 import threading
 
 from src.config import settings
-from src.helpers.monitor import get_folder_size, monitor_folder_size
-from src.utils.downloading.bold import BOLDDownloader
-from src.utils.downloading.era5 import ERA5Downloader
-from src.utils.downloading.inaturalist import iNaturalistDownloader
-from src.utils.downloading.mapoflife import MOL
-from src.utils.downloading.xenocanto import XenoCantoDownloader
-from src.utils.merge_data import processing
+from src.data_ingestion.api_clients.bold import BOLDDownloader
+from src.data_ingestion.api_clients.era5 import ERA5Downloader
+from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
+from src.data_ingestion.api_clients.mapoflife import MOL
+from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
+from src.monitoring_logging.monitoring.folder_size import (
+    get_folder_size,
+    monitor_folder_size,
+)
 
 
 def era5():

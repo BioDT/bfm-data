@@ -1,10 +1,10 @@
-# src/utils/downloading/mapoflife.py
+# src/data_ingestion/api_clients/mapoflife.py
 
 import os
 
 import pandas as pd
 
-from src.utils.downloading.downloader import Downloader
+from src.data_ingestion.api_clients.downloader import Downloader
 
 
 class MOL(Downloader):

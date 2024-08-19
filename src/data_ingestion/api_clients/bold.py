@@ -1,4 +1,4 @@
-# src/utils/downloading/bold.py
+# src/data_ingestion/api_clients/bold.py
 
 import os
 from multiprocessing import Pool
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pycountry
 
-from src.utils.downloading.downloader import Downloader
+from src.data_ingestion.api_clients.downloader import Downloader
 
 
 class BOLDDownloader(Downloader):

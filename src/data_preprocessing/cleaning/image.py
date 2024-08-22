@@ -2,46 +2,36 @@
 
 import cv2
 import numpy as np
-import torch
 import torchvision.transforms as transforms
 from PIL import Image
 
 
-def resize_image(image: Image.Image, size: tuple) -> Image.Image:
+def resize_crop_image(
+    image: Image.Image, size: tuple, crop: bool = False
+) -> Image.Image:
     """
-    Resizes an image to the specified dimensions.
+    Resizes or crops an image to a specified size.
 
     Args:
         image (Image.Image): The input image.
-        size (tuple): The desired dimensions (width, height).
+        size (tuple): The target size (width, height).
+        crop (bool): If True, crops the image; otherwise, resizes.
 
     Returns:
-        Image.Image: The resized image.
+        Image.Image: The resized or cropped image.
     """
-    return image.resize(size)
+    if crop:
+        transform = transforms.CenterCrop(size)
+    else:
+        image = image.resize(size, Image.Resampling.LANCZOS)
+        return image
 
-
-def normalize_image(
-    image: torch.Tensor, mean: list = [0.5, 0.5, 0.5], std: list = [0.5, 0.5, 0.5]
-) -> torch.Tensor:
-    """
-    Normalizes an image tensor to have a standard range of values.
-
-    Args:
-    image (torch.Tensor): The input image tensor.
-    mean (list): The mean values for each channel.
-    std (list): The standard deviation values for each channel.
-
-    Returns:
-    torch.Tensor: The normalized image tensor.
-    """
-    normalize = transforms.Normalize(mean=mean, std=std)
-    return normalize(image)
+    return transform(image)
 
 
 def denoise_image(image: Image.Image) -> Image.Image:
     """
-    Removes noise from an image using a denoising algorithm.
+    Reduces noise from an image using a denoising algorithm.
 
     Args:
         image (Image.Image): The input image.
@@ -50,6 +40,23 @@ def denoise_image(image: Image.Image) -> Image.Image:
         Image.Image: The denoised image.
     """
     image_np = np.array(image)
-    denoised_image_np = cv2.fastNlMeansDenoisingColored(image_np, None, 10, 10, 7, 21)
+    denoised_image_np = cv2.fastNlMeansDenoisingColored(image_np, None, 6, 6, 7, 21)
     denoised_image = Image.fromarray(denoised_image_np)
     return denoised_image
+
+
+def blur_image(image: Image.Image, kernel_size: int = 5) -> Image.Image:
+    """
+    Applies Gaussian blurring to an image.
+
+    Args:
+        image (Image.Image): The input image.
+        kernel_size (int): The size of the Gaussian kernel (must be odd).
+
+    Returns:
+        Image.Image: The blurred image.
+    """
+    image_np = np.array(image)
+    blurred_image_np = cv2.GaussianBlur(image_np, (kernel_size, kernel_size), 0)
+    blurred_image = Image.fromarray(blurred_image_np)
+    return blurred_image

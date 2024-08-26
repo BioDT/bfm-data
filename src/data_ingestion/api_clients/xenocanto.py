@@ -10,6 +10,7 @@ import torchaudio
 import torchaudio.transforms as T
 
 from src.data_ingestion.api_clients.downloader import Downloader
+from src.helpers.handle_values import parse_date_time
 
 
 class XenoCantoDownloader(Downloader):
@@ -30,88 +31,111 @@ class XenoCantoDownloader(Downloader):
         super().__init__(data_dir, "Life")
         self.base_url = "https://xeno-canto.org/api/2/recordings"
 
-    def get_xeno_canto_recordings(self, country: str, page: int = 1):
+    def get_xeno_canto_recordings(self, species: str = "", page: int = 1) -> dict:
         """
-        Fetch bird song information from xeno-canto API.
+        Fetch bird song information from the Xeno-Canto API.
 
         Args:
+            species (str): Scientific name of the species to filter recordings. Default is empty string for all species.
             page (int): Page number for paginated API results. Default is 1.
 
         Returns:
-            list: A list of acceptable bird recordings depends on our parameters.
+            dict: A dictionary containing recordings and pagination info.
         """
 
-        # cnt (str): The country where the recording was made
         # q_ct (str): The quality rating for the recording sould be higher than. options: 'A', 'B', 'C', 'D', 'E'
         # type (str) = The sound type of the recording. options: 'call', 'song', and etc.
 
-        query = f"cnt:{country} q_gt:C type:song"
+        query = f"{species} q_gt:C" if species else "q_gt:C"
         params = {"query": query, "page": page}
         json_response = self.get_base_url_page(params)
-        num_pages = json_response.get("numPages", 1)
 
         def is_acceptable(recording):
-            """
-            Determine if a recording is acceptable based on the number of additional species.
-            """
+            """Determine if a recording is acceptable based on the number of additional species."""
             return len(recording["also"]) <= 1 and (
                 not recording["also"] or recording["also"][0] == ""
             )
 
         recordings = [
             recording
-            for recording in json_response["recordings"]
+            for recording in json_response.get("recordings", [])
             if is_acceptable(recording)
         ]
 
-        if page < num_pages:
-            recordings.extend(self.get_xeno_canto_recordings(country, page + 1))
+        return {"recordings": recordings, "numPages": json_response.get("numPages", 1)}
 
-        return recordings
-
-    def download(self):
+    def download(self, scientific_name: str = "") -> None:
         """
-        Download bird songs for all the countries. Create also the country's directory.
-        """
-        countries = [country.name for country in pycountry.countries]
-        for country in countries:
-            if country:
-                country_path = os.path.join(self.base_path, country)
-            else:
-                country_path = self.base_path
-            Path(country_path).mkdir(parents=True, exist_ok=True)
-            self.download_sounds_per_country(country, country_path)
-
-    def download_sounds_per_country(self, country: str, country_path: str):
-        """
-        Download bird songs for the specified country.
+        Download bird songs for the specified species or all species if none specified.
 
         Args:
-            country (str): The name of the specified country.
-            country_path (str): Country's directory path for saving the files.
+            scientific_name (str): Scientific name of the species. If empty, download all species.
         """
-        recordings = self.get_xeno_canto_recordings(country)
-        if not recordings:
-            return
+        if scientific_name:
+            scientific_name_path = os.path.join(self.base_path, scientific_name)
+            Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
+            self.download_sounds_for_species(scientific_name, scientific_name_path)
+        else:
+            self.download_sounds_for_all_species()
 
-        for recording in recordings:
-            self.download_process_recording((recording, country_path))
+    def download_sounds_for_all_species(self) -> None:
+        """
+        Download bird songs for all available species.
+        """
+        page = 1
+        while True:
+            response = self.get_xeno_canto_recordings(page=page)
+            recordings = response.get("recordings", [])
+            if not recordings:
+                break
 
-    def download_process_recording(self, args: dict):
+            for recording in recordings:
+                scientific_name = (
+                    f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}"
+                ).replace(" ", "_")
+                scientific_name_path = os.path.join(self.base_path, scientific_name)
+                Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
+                self.download_process_recording((recording, scientific_name_path))
+
+            page += 1
+            if page > response.get("numPages", 1):
+                break
+
+    def download_sounds_for_species(
+        self, scientific_name: str, scientific_name_path: str
+    ) -> None:
+        """
+        Download bird songs for the specified species.
+
+        Args:
+            scientific_name (str): Scientific name of the specified species.
+            scientific_name_path (str): Species' directory path for saving the files.
+        """
+        page = 1
+        while True:
+            response = self.get_xeno_canto_recordings(scientific_name, page=page)
+            recordings = response.get("recordings", [])
+            if not recordings:
+                break
+
+            for recording in recordings:
+                self.download_process_recording((recording, scientific_name_path))
+
+            page += 1
+            if page > response.get("numPages", 1):
+                break
+
+    def download_process_recording(self, args: tuple) -> None:
         """
         Download and process a single bird song recording.
 
         Args:
             recording (dict): A recording entry from the API response.
         """
-        recording, country_path = args
+        recording, scientific_name_path = args
 
         file_url = recording.get("file", "Unknown")
         file_name = recording.get("file-name", "Unknown")
-        scientific_name = (
-            f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}"
-        )
-        scientific_name_path = os.path.join(country_path, scientific_name)
         base_name = os.path.splitext(file_name)[0]
         if not os.path.exists(scientific_name_path):
             Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
@@ -146,7 +170,6 @@ class XenoCantoDownloader(Downloader):
             waveform = resampler(waveform)
 
         self.save_audio(waveform, base_name, scientific_name_path)
-        data = []
         id = recording.get("id", "Uknown")
         group = recording.get("group", "Uknown")
         country = recording.get("cnt", "Uknown")
@@ -154,18 +177,25 @@ class XenoCantoDownloader(Downloader):
         lon = recording.get("lng", "0.0")
         coordinates = f"[{lon}, {lat}]"
         preferred_common_name = recording.get("en", "Uknown")
-        data.append(
+        time = recording.get("time", "Uknown")
+        date = recording.get("date", "Uknown")
+        timestamp = parse_date_time(date, time)
+
+        data = [
             {
                 "id": id,
                 "Group": group,
-                "Scientific_name": scientific_name,
+                "Scientific_name": f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}",
                 "Common_name": preferred_common_name,
                 "Country": country,
+                "timestamp": timestamp,
                 "Coordinates": coordinates,
                 "audio": file_url,
             }
+        ]
+        self.save_to_csv(
+            data, os.path.join(scientific_name_path, f"{base_name}_audio.csv")
         )
-        self.save_to_csv(data, os.path.join(scientific_name_path, f"{base_name}.csv"))
 
     def save_audio(self, waveform: T, base_name: str, scientific_name_path: str):
         """

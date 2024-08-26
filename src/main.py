@@ -1,6 +1,7 @@
 # src/main.py
 
 import concurrent.futures
+import gc
 import threading
 
 from src.config import settings
@@ -42,7 +43,7 @@ def iNaturalist():
 
 def BOLD():
     bold_downloader = BOLDDownloader(settings.DATA_DIR)
-    bold_downloader.get_and_save_data()
+    bold_downloader.download()
 
 
 def mapoflife():
@@ -64,13 +65,15 @@ def main():
 
     functions = [iNaturalist, xeno_canto, BOLD]
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(fn) for fn in functions]
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
             except Exception as e:
                 print(f"Function raised an exception: {e}")
+            finally:
+                gc.collect()
 
 
 if __name__ == "__main__":

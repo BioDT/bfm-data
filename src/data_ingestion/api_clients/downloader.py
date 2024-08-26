@@ -91,18 +91,29 @@ class Downloader:
             writer.writeheader()
             writer.writerows(existing_data)
 
-    def download_file(self, url: str, filename: str):
+    def download_file(self, url: str, file_path: str) -> int:
         """
-        Download a file from the given URL and save it to the specified filename.
+        Download a file from the given URL and save it to the specified path.
 
         Args:
-            url (str): The URL to download the file from.
-            filename (str): The name of the file to save the downloaded content.
+            url (str): The URL of the file to download.
+            file_path (str): The local file path where the file will be saved.
+
+        Returns:
+            int: The size of the downloaded file in bytes. Returns 0 if the download fails.
         """
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(filename, "wb") as file:
-                shutil.copyfileobj(response.raw, file)
-        else:
+        try:
+            response = requests.get(url, stream=True)
             response.raise_for_status()
-        response.close()
+
+            with open(file_path, "wb") as file:
+                total_size = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        total_size += len(chunk)
+
+            return total_size
+        except requests.exceptions.RequestException as e:
+            print(f"Error downloading {url}: {e}")
+            return 0

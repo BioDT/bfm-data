@@ -21,21 +21,25 @@ class BOLDDownloader(Downloader):
         self.base_url = "https://www.boldsystems.org/index.php/API_Public/combined"
         self.limit = 100
 
-    def get_bold_data(self, country: str, page: int = 1) -> list:
+    def get_bold_data(
+        self, query: str, is_species: bool = False, page: int = 1
+    ) -> None:
         """
         Fetch observations from BOLD.
 
         Args:
-            country (str): Country name for querying the data from BOLD.
+            query (str): The query parameter, which could be a country name or a species name.
+            is_species (bool): If True, query is treated as a species name; otherwise, as a country.
             page (int): Page number for paginated API results. Default is 1.
 
         Returns:
             list: List of observations.
         """
+        param_key = "taxon" if is_species else "geo"
 
         while True:
             params = {
-                "geo": country,
+                param_key: query,
                 "format": "json",
                 "offset": (page - 1) * self.limit,
                 "limit": self.limit,
@@ -53,7 +57,19 @@ class BOLDDownloader(Downloader):
 
             page += 1
 
-    def get_and_save_data(self):
+    def download(self, scientific_name: str = None) -> None:
+        """
+        Download BOLD data based on a country or species.
+
+        Args:
+            scientific_name (str): The scientific name of the species. If None, fetches data for all countries.
+        """
+        if scientific_name:
+            self.get_bold_data(scientific_name, is_species=True)
+        else:
+            self.download_by_country()
+
+    def download_by_country(self):
         """
         Fetch BOLD data for all countries.
         """
@@ -93,9 +109,7 @@ class BOLDDownloader(Downloader):
             scientific_name = taxonomy.get("species", "Unknown")
 
             country = record_data.get("collection_event", {}).get("country", "Unknown")
-            scientific_name_path = os.path.join(
-                self.base_path, country, scientific_name
-            )
+            scientific_name_path = os.path.join(self.base_path, scientific_name)
             os.makedirs(scientific_name_path, exist_ok=True)
 
             coordinates_data = record_data.get("collection_event", {}).get(

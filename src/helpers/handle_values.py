@@ -67,11 +67,9 @@ def parse_date_time(date, time):
         if time in time_mappings:
             return time_mappings[time]
 
-        # Handle malformed times like "17" (only hour, no minutes)
         if len(time) == 2 and time.isdigit():
             return time + ":00"
 
-        # Handle invalid or impossible times like "108:00"
         try:
             hours, minutes = map(int, time.split(":"))
             if hours >= 24 or minutes >= 60:

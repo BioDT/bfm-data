@@ -1,10 +1,15 @@
 # src/data_ingestion/api_clients/inaturalist.py
 
+import asyncio
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+import aiohttp
+from cachetools import TTLCache
 
 from src.data_ingestion.api_clients.downloader import Downloader
 
@@ -27,6 +32,29 @@ class iNaturalistDownloader(Downloader):
         self.max_download_size_per_hour = 5 * 1024 * 1024 * 1024
         self.downloaded_size = 0
         self.last_request_time = time.time()
+        self.downloaded_ids = set()
+        self.load_downloaded_ids()
+        self.per_page_limit = 200
+        self.page_limit = 50
+        self.semaphore = asyncio.Semaphore(10)
+        self.cache = TTLCache(maxsize=1000, ttl=3600)
+
+    def load_downloaded_ids(self):
+        """
+        Load the IDs of already downloaded observations from a file.
+        """
+        ids_file = os.path.join(self.data_dir, "downloaded_ids.json")
+        if os.path.exists(ids_file):
+            with open(ids_file, "r") as file:
+                self.downloaded_ids = set(json.load(file))
+
+    def save_downloaded_ids(self):
+        """
+        Save the IDs of downloaded observations to a file.
+        """
+        ids_file = os.path.join(self.data_dir, "downloaded_ids.json")
+        with open(ids_file, "w") as file:
+            json.dump(list(self.downloaded_ids), file)
 
     def throttle_requests(self):
         """
@@ -37,46 +65,82 @@ class iNaturalistDownloader(Downloader):
             time.sleep(1.0 / self.max_requests_per_minute - elapsed_time)
         self.last_request_time = time.time()
 
-    def get_observations(self, page: int = 1) -> list:
+    async def fetch_observations(
+        self, session: aiohttp.ClientSession, id_above: int = None, start_page: int = 1
+    ) -> list:
         """
         Fetch observations from iNaturalist.
 
         Args:
-            page (int): Page number for paginated API results. Default is 1.
+            id_above (int): ID above which to fetch observations.
+            start_page (int): Page number for paginated API results. Default is 1.
 
         Returns:
             list: List of observations.
         """
+        observations = []
+        page = start_page
+        try:
+            while True:
+                # print(f"Fetching observations: id_above={id_above}, page={page}")
+                async with self.semaphore:
+                    self.throttle_requests()
 
-        # per_page (int): Allowed values: 1 to 200
-        # has[] (list): Catch-all for some boolean selectors. (photos) - only show observations with photos.
-        #                                                     (geo) - only show georeferenced observations
-        # quality_grade (str) = 'research' / 'casual'
+                    # per_page (int): Allowed values: 1 to 200
+                    # has[] (list): Catch-all for some boolean selectors. (photos) - only show observations with photos.
+                    #                                                     (geo) - only show georeferenced observations
+                    # quality_grade (str) = 'research' / 'casual'
 
-        self.throttle_requests()
+                    params = {
+                        "per_page": self.per_page_limit,
+                        "has[]": ["photos", "geo"],
+                        "quality_grade": "research",
+                    }
 
-        params = {
-            "per_page": 200,
-            "has[]": ["photos", "geo"],
-            "quality_grade": "research",
-            "page": page,
-        }
+                    if id_above:
+                        params["id_above"] = id_above
+                    else:
+                        params["page"] = page
 
-        json_response = self.get_base_url_page(params)
+                    cache_key = (page, id_above)
+                    if cache_key in self.cache:
+                        # print(f"Cache hit for key: {cache_key}")
+                        json_response = self.cache[cache_key]
 
-        total_results = json_response.get("total_results", 0)
-        num_pages = (total_results // json_response.get("per_page", 200)) + (
-            1 if total_results % json_response.get("per_page", 200) != 0 else 0
-        )
+                    else:
+                        async with session.get(
+                            self.base_url, params=params
+                        ) as response:
+                            json_response = await response.json()
+                            self.cache[cache_key] = json_response
 
-        observations = json_response["results"]
+                    new_observations = json_response.get("results", [])
+                    # print(f"Observations fetched: {len(new_observations)} found.")
 
-        self.process_and_download_observations(observations)
+                    if not new_observations:
+                        # print("No more observations to download.")
+                        return
 
-        if page < num_pages:
-            self.get_observations(page + 1)
+                    await self.process_and_download_observations(new_observations)
 
-    def process_and_download_observations(
+                    observations.extend(new_observations)
+
+                    if page is not None and page >= self.page_limit:
+                        # print("Page limit reached, switching to id_above.")
+                        id_above = new_observations[-1]["id"]
+                        page = None
+                        continue
+
+                    if id_above:
+                        id_above = new_observations[-1]["id"]
+                    else:
+                        page += 1
+
+        except Exception as e:
+            print(f"Error occurred while fetching observations: {e}")
+            return []
+
+    async def process_and_download_observations(
         self, observations: List[Dict[str, Any]]
     ) -> None:
         """
@@ -85,18 +149,22 @@ class iNaturalistDownloader(Downloader):
         Args:
             observations (list): List of observations.
         """
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = []
-            for observation in observations:
-                futures.append(
-                    executor.submit(self.process_single_observation, observation)
-                )
+        batch_size = 20
+        for i in range(0, len(observations), batch_size):
+            batch = observations[i : i + batch_size]
+            await self.process_batch(batch)
 
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"Error processing observation: {e}")
+    async def process_batch(self, batch: List[Dict[str, Any]]) -> None:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            loop = asyncio.get_event_loop()
+            tasks = [
+                loop.run_in_executor(
+                    executor, self.process_single_observation, observation
+                )
+                for observation in batch
+                if observation["id"] not in self.downloaded_ids
+            ]
+            await asyncio.gather(*tasks)
 
     def process_single_observation(self, observation: Dict[str, Any]) -> None:
         """
@@ -111,6 +179,9 @@ class iNaturalistDownloader(Downloader):
         observation_id = observation.get("id", "Unknown")
         preferred_common_name = taxon.get("preferred_common_name", "Unknown")
         scientific_name = taxon.get("name", "Unknown")
+
+        self.downloaded_ids.add(observation["id"])
+        self.save_downloaded_ids()
 
         for photo_counter, photo in enumerate(observation.get("photos", []), start=1):
             photo_url = self.format_photo_url(photo)
@@ -131,11 +202,9 @@ class iNaturalistDownloader(Downloader):
             self.throttle_requests()
             image_size = self.download_file(photo_url, image_name)
 
-            # Only update downloaded size if the image_size is valid
             if image_size is not None:
                 self.downloaded_size += image_size
 
-            # Check if the download size exceeds the hourly limit
             if self.downloaded_size >= self.max_download_size_per_hour:
                 print("Download limit reached for the hour.")
                 return
@@ -205,9 +274,11 @@ class iNaturalistDownloader(Downloader):
 
         image_name = os.path.join(
             scientific_name_path,
-            f"{common_name}_{observation_id}_{photo_counter}.jpg",
+            f"{str(common_name).replace('/', '_')}_{observation_id}_{photo_counter}.jpg",
         )
-        csv_path = os.path.join(scientific_name_path, f"{common_name}_image.csv")
+        csv_path = os.path.join(
+            scientific_name_path, f"{str(common_name).replace('/', '_')}_image.csv"
+        )
 
         return image_name, csv_path
 
@@ -251,3 +322,7 @@ class iNaturalistDownloader(Downloader):
                 "timestamp": timestamp,
             }
         ]
+
+    async def run(self):
+        async with aiohttp.ClientSession() as session:
+            await self.fetch_observations(session, start_page=1)

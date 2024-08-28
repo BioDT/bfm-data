@@ -19,18 +19,14 @@ class BOLDDownloader(Downloader):
         """
         super().__init__(data_dir, "Life")
         self.base_url = "https://www.boldsystems.org/index.php/API_Public/combined"
-        self.limit = 100
 
-    def get_bold_data(
-        self, query: str, is_species: bool = False, page: int = 1
-    ) -> None:
+    def get_bold_data(self, query: str, is_species: bool = False) -> None:
         """
         Fetch observations from BOLD.
 
         Args:
             query (str): The query parameter, which could be a country name or a species name.
             is_species (bool): If True, query is treated as a species name; otherwise, as a country.
-            page (int): Page number for paginated API results. Default is 1.
 
         Returns:
             list: List of observations.
@@ -41,10 +37,12 @@ class BOLDDownloader(Downloader):
             params = {
                 param_key: query,
                 "format": "json",
-                "offset": (page - 1) * self.limit,
-                "limit": self.limit,
             }
             json_response = self.get_base_url_page(params)
+
+            if json_response is None:
+                break
+
             bold_records = json_response.get("bold_records", {}).get("records", {})
 
             if not bold_records:
@@ -52,10 +50,7 @@ class BOLDDownloader(Downloader):
 
             self.process_data(bold_records)
 
-            if len(bold_records) < self.limit:
-                break
-
-            page += 1
+            break
 
     def download(self, scientific_name: str = None) -> None:
         """

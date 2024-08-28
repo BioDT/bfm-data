@@ -34,6 +34,17 @@ files = [
 test = ["tox"]
 
 [[package]]
+name = "cachetools"
+version = "5.5.0"
+description = "Extensible memoizing collections and decorators"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "cachetools-5.5.0-py3-none-any.whl", hash = "sha256:02134e8439cdc2ffb62023ce1debca2944c3f289d66bb17ead3ab3dede74b292"},
+    {file = "cachetools-5.5.0.tar.gz", hash = "sha256:2cc24fb4cbe39633fb7badd9db9ca6295d766d9c2995f245725a46715d050f2a"},
+]
+
+[[package]]
 name = "cads-api-client"
 version = "1.2.0"
 description = "CADS API Python client"
@@ -2601,4 +2612,4 @@ tqdm = "*"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "4aa3347282d93ae2122ab109a3f1c3536c8e1c7d5c3f68326bd2412f187cf949"
+content-hash = "ee49f6a88fd93ed280699cb80edaad43105196e5284a2c869a116a0bacde429e"

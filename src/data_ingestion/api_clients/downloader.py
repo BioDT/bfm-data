@@ -39,16 +39,21 @@ class Downloader:
         Returns:
             dict: The JSON response from the source's API containing the data.
         """
-        request = requests.Request("GET", url=self.base_url, params=params)
-        prepared_request = request.prepare()
+        try:
+            request = requests.Request("GET", url=self.base_url, params=params)
+            prepared_request = request.prepare()
 
-        session = requests.Session()
-        response = session.send(prepared_request)
+            session = requests.Session()
+            response = session.send(prepared_request)
 
-        if response.status_code == 200:
-            return response.json()
-        else:
             response.raise_for_status()
+
+            try:
+                return response.json()
+            except requests.exceptions.JSONDecodeError:
+                return None
+        except requests.exceptions.RequestException:
+            return None
 
     def save_to_csv(self, data: list, filename: str):
         """

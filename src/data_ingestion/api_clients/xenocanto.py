@@ -134,6 +134,8 @@ class XenoCantoDownloader(Downloader):
         """
         recording, scientific_name_path = args
 
+        Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
+
         file_url = recording.get("file", "Unknown")
         file_name = recording.get("file-name", "Unknown")
         base_name = os.path.splitext(file_name)[0]
@@ -194,7 +196,10 @@ class XenoCantoDownloader(Downloader):
             }
         ]
         self.save_to_csv(
-            data, os.path.join(scientific_name_path, f"{base_name}_audio.csv")
+            data,
+            os.path.join(
+                scientific_name_path, f"{str(base_name).replace('/', '_')}_audio.csv"
+            ),
         )
 
     def save_audio(self, waveform: T, base_name: str, scientific_name_path: str):
@@ -206,8 +211,13 @@ class XenoCantoDownloader(Downloader):
             base_name (str): The base name for the output files.
             species_path (str): Species's directory path for saving the files.
         """
-        torchaudio.save(
-            os.path.join(scientific_name_path, f"{base_name}.wav"),
-            waveform,
-            self.AUDIO_SAMPLE_RATE,
+        Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
+
+        file_path = os.path.join(
+            scientific_name_path, f"{base_name.replace('/', '_')}.wav"
         )
+
+        try:
+            torchaudio.save(file_path, waveform, self.AUDIO_SAMPLE_RATE)
+        except Exception as e:
+            print(f"Failed to save audio file {file_path}: {str(e)}")

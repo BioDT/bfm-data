@@ -30,6 +30,7 @@ fastparquet = "^2024.5.0"
 xarray = "^2024.7.0"
 torchvision = "^0.19.0"
 opencv-python = "^4.10.0.84"
+cachetools = "^5.5.0"
 
 [tool.poetry.scripts]
 run-app = "src.main:main"

@@ -1,5 +1,6 @@
 # src/main.py
 
+import asyncio
 import concurrent.futures
 import gc
 import threading
@@ -36,9 +37,9 @@ def xeno_canto():
     xeno_canto_downloader.download()
 
 
-def iNaturalist():
+async def iNaturalist():
     iNaturalist = iNaturalistDownloader(settings.DATA_DIR)
-    iNaturalist.get_observations()
+    await iNaturalist.run()
 
 
 def BOLD():
@@ -49,6 +50,16 @@ def BOLD():
 def mapoflife():
     mol_downloader = MOL(settings.DATA_DIR)
     mol_downloader.get_save_data("Malurus cyaneus", "MOL.csv")
+
+
+def run_async_in_thread(async_func):
+    """
+    Helper to run an async function in a synchronous context.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(async_func)
+    loop.close()
 
 
 def main():
@@ -63,7 +74,7 @@ def main():
     monitoring_thread.daemon = True
     monitoring_thread.start()
 
-    functions = [iNaturalist, xeno_canto, BOLD]
+    functions = [lambda: run_async_in_thread(iNaturalist()), xeno_canto, BOLD]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(fn) for fn in functions]

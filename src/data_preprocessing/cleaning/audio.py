@@ -88,18 +88,3 @@ def reduce_noise(
         reduced_stft, n_fft=n_fft, hop_length=hop_length, window=window
     )
     return reduced_waveform
-
-
-def normalise_audio(waveform: torch.Tensor) -> torch.Tensor:
-    """
-    Normalises the audio waveform to have zero mean and unit variance.
-
-    Args:
-        waveform (torch.Tensor): The input audio waveform.
-
-    Returns:
-        torch.Tensor: The normalised audio waveform.
-    """
-    waveform -= waveform.mean()
-    waveform /= waveform.abs().max()
-    return waveform

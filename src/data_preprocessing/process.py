@@ -1,16 +1,16 @@
 # src/data_preprocessing/main.py
 
+import torch
 import torchaudio
 import torchvision.transforms as transforms
+import xarray
 from PIL import Image
 
-from src.data_preprocessing.cleaning.audio import (
-    normalise_audio,
-    reduce_noise,
-    remove_silence,
-)
+from src.data_preprocessing.batch import DataBatch
+from src.data_preprocessing.cleaning.audio import reduce_noise, remove_silence
 from src.data_preprocessing.cleaning.image import denoise_image, resize_crop_image
-from src.data_preprocessing.transformation.audio import resample_audio
+from src.data_preprocessing.metadata import BatchMetadata
+from src.data_preprocessing.transformation.audio import normalise_audio, resample_audio
 from src.data_preprocessing.transformation.image import (
     augment_image,
     convert_color_space,
@@ -48,7 +48,7 @@ def process_audio(
     waveform = remove_silence(
         waveform, sample_rate, silence_threshold, min_silence_duration
     )
-    waveform = reduce_noise(waveform, noise_reduce_factor)
+    # waveform = reduce_noise(waveform, noise_reduce_factor)
     waveform = normalise_audio(waveform)
     waveform = resample_audio(waveform, sample_rate, target_sample_rate)
 
@@ -87,3 +87,67 @@ def process_image(
 
     image = denoise_image(image)
     image.save(output_path)
+
+
+def process_era5(
+    single_variables_dataset: xarray.Dataset,
+    surface_variables_dataset: xarray.Dataset,
+    pressure_variables_dataset: xarray.Dataset,
+):
+    i = 1
+
+    longitudes = surface_variables_dataset.longitude.values
+    longitudes = (longitudes + 360) % 360
+
+    batch = DataBatch(
+        surface_variables={
+            "2t": torch.from_numpy(
+                surface_variables_dataset["t2m"].values[[i - 1, i]][None]
+            ),
+            "10u": torch.from_numpy(
+                surface_variables_dataset["u10"].values[[i - 1, i]][None]
+            ),
+            "10v": torch.from_numpy(
+                surface_variables_dataset["v10"].values[[i - 1, i]][None]
+            ),
+            "msl": torch.from_numpy(
+                surface_variables_dataset["msl"].values[[i - 1, i]][None]
+            ),
+        },
+        static_variables={
+            "z": torch.from_numpy(single_variables_dataset["z"].values[0]),
+            "t": torch.from_numpy(single_variables_dataset["t"].values[0]),
+            "q": torch.from_numpy(single_variables_dataset["q"].values[0]),
+        },
+        atmospheric_variables={
+            "t": torch.from_numpy(
+                pressure_variables_dataset["t"].values[[i - 1, i]][None]
+            ),
+            "u": torch.from_numpy(
+                pressure_variables_dataset["u"].values[[i - 1, i]][None]
+            ),
+            "v": torch.from_numpy(
+                pressure_variables_dataset["v"].values[[i - 1, i]][None]
+            ),
+            "q": torch.from_numpy(
+                pressure_variables_dataset["q"].values[[i - 1, i]][None]
+            ),
+            "z": torch.from_numpy(
+                pressure_variables_dataset["z"].values[[i - 1, i]][None]
+            ),
+        },
+        batch_metadata=BatchMetadata(
+            latitude=torch.from_numpy(surface_variables_dataset.latitude.values),
+            longitude=torch.from_numpy(longitudes),
+            timestamp=(
+                surface_variables_dataset.time.values.astype("datetime64[s]").tolist()[
+                    i
+                ],
+            ),
+            pressure_levels=tuple(
+                int(level) for level in pressure_variables_dataset.level.values
+            ),
+        ),
+    )
+
+    return batch

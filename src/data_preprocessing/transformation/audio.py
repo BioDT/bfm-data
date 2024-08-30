@@ -73,3 +73,18 @@ def augment_audio(
     )(augmented_audio)
 
     return augmented_audio
+
+
+def normalise_audio(waveform: torch.Tensor) -> torch.Tensor:
+    """
+    Normalises the audio waveform to have zero mean and unit variance.
+
+    Args:
+        waveform (torch.Tensor): The input audio waveform.
+
+    Returns:
+        torch.Tensor: The normalised audio waveform.
+    """
+    waveform -= waveform.mean()
+    waveform /= waveform.abs().max()
+    return waveform

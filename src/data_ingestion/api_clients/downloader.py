@@ -2,7 +2,6 @@
 
 import csv
 import os
-import shutil
 
 import requests
 
@@ -29,26 +28,34 @@ class Downloader:
         self.source = source
         self.base_path = os.path.join(data_dir, source)
 
-    def get_base_url_page(self, params: str):
+    def get_base_url_page(self, params: dict):
         """
         Fetch a page from the a source's API.
 
         Args:
-            query (str): The query string to search for specific data.
+            params (dict): The parameters for the API request.
 
         Returns:
             dict: The JSON response from the source's API containing the data.
         """
-        request = requests.Request("GET", url=self.base_url, params=params)
-        prepared_request = request.prepare()
+        try:
+            request = requests.Request("GET", url=self.base_url, params=params)
+            prepared_request = request.prepare()
 
-        session = requests.Session()
-        response = session.send(prepared_request)
+            with requests.Session() as session:
+                response = session.send(prepared_request)
+                response.raise_for_status()
 
-        if response.status_code == 200:
-            return response.json()
-        else:
-            response.raise_for_status()
+                print(f"Response Status Code: {response.status_code}")
+                print(f"Response Content (raw): {response.content}")
+
+                try:
+                    return response.json()
+                except requests.exceptions.JSONDecodeError:
+                    print("Failed to decode JSON from the response.")
+                    return None
+        except requests.exceptions.RequestException:
+            return None
 
     def save_to_csv(self, data: list, filename: str):
         """
@@ -91,18 +98,29 @@ class Downloader:
             writer.writeheader()
             writer.writerows(existing_data)
 
-    def download_file(self, url: str, filename: str):
+    def download_file(self, url: str, file_path: str) -> int:
         """
-        Download a file from the given URL and save it to the specified filename.
+        Download a file from the given URL and save it to the specified path.
 
         Args:
-            url (str): The URL to download the file from.
-            filename (str): The name of the file to save the downloaded content.
+            url (str): The URL of the file to download.
+            file_path (str): The local file path where the file will be saved.
+
+        Returns:
+            int: The size of the downloaded file in bytes. Returns 0 if the download fails.
         """
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(filename, "wb") as file:
-                shutil.copyfileobj(response.raw, file)
-        else:
+        try:
+            response = requests.get(url, stream=True)
             response.raise_for_status()
-        response.close()
+
+            with open(file_path, "wb") as file:
+                total_size = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        total_size += len(chunk)
+
+            return total_size
+        except requests.exceptions.RequestException as e:
+            print(f"Error downloading {url}: {e}")
+            return 0

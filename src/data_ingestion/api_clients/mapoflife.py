@@ -1,9 +1,5 @@
 # src/data_ingestion/api_clients/mapoflife.py
 
-import os
-
-import pandas as pd
-
 from src.data_ingestion.api_clients.downloader import Downloader
 
 

@@ -6,7 +6,7 @@ import random
 import pandas as pd
 import pyarrow as pa
 
-from src.config import settings
+from src.config.paths import LIFE_DIR
 
 
 def processing():
@@ -32,7 +32,7 @@ def processing():
     """
     records = []
 
-    for root, _, files in os.walk(settings.LIFE_DIR):
+    for root, _, files in os.walk(LIFE_DIR):
         for file in files:
             file_path = os.path.join(root, file)
 
@@ -84,3 +84,24 @@ def processing():
 
     df_combined = pd.DataFrame(combined_records)
     df_combined.to_parquet("combined_data.parquet", engine="pyarrow")
+
+
+def extract_species_names(file_path: str) -> list:
+    """
+    Extract species names from a file containing paths.
+
+    Args:
+        file_path (str): The path to the text file containing species paths.
+        Ex. : /data/projects/biodt/storage/folders_with_only_jpg.txt
+
+    Returns:
+        list: A list of species names.
+    """
+    species_names = []
+
+    with open(file_path, "r") as file:
+        for line in file:
+            species_name = line.strip().split("/")[-1]
+            species_names.append(species_name)
+
+    return species_names

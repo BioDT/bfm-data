@@ -2,9 +2,9 @@
 
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import pycountry
 import requests
 import torchaudio
 import torchaudio.transforms as T
@@ -18,9 +18,7 @@ class XenoCantoDownloader(Downloader):
     Class for downloading and processing bird song recordings from Xeno-Canto.
     """
 
-    AUDIO_SAMPLE_RATE = 16000
-
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, audio_sample_rate: int = 16000):
         """
         Initialize the XenoCantoDownloader.
 
@@ -30,6 +28,7 @@ class XenoCantoDownloader(Downloader):
         """
         super().__init__(data_dir, "Life")
         self.base_url = "https://xeno-canto.org/api/2/recordings"
+        self.AUDIO_SAMPLE_RATE = audio_sample_rate
 
     def get_xeno_canto_recordings(self, species: str = "", page: int = 1) -> dict:
         """
@@ -82,6 +81,7 @@ class XenoCantoDownloader(Downloader):
         """
         Download bird songs for all available species.
         """
+
         page = 1
         while True:
             response = self.get_xeno_canto_recordings(page=page)
@@ -90,9 +90,7 @@ class XenoCantoDownloader(Downloader):
                 break
 
             for recording in recordings:
-                scientific_name = (
-                    f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}"
-                ).replace(" ", "_")
+                scientific_name = f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}"
                 scientific_name_path = os.path.join(self.base_path, scientific_name)
                 Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
                 self.download_process_recording((recording, scientific_name_path))
@@ -175,9 +173,12 @@ class XenoCantoDownloader(Downloader):
         id = recording.get("id", "Uknown")
         group = recording.get("group", "Uknown")
         country = recording.get("cnt", "Uknown")
-        lat = recording.get("lat", "0.0")
-        lon = recording.get("lng", "0.0")
-        coordinates = f"[{lon}, {lat}]"
+        try:
+            lat = float(recording.get("lat", "0.0"))
+            lon = float(recording.get("lng", "0.0"))
+        except ValueError:
+            lat, lon = 0.0, 0.0
+
         preferred_common_name = recording.get("en", "Uknown")
         time = recording.get("time", "Uknown")
         date = recording.get("date", "Uknown")
@@ -190,8 +191,9 @@ class XenoCantoDownloader(Downloader):
                 "Scientific_name": f"{recording.get('gen', 'Unknown')} {recording.get('sp', 'Unknown')}",
                 "Common_name": preferred_common_name,
                 "Country": country,
-                "timestamp": timestamp,
-                "Coordinates": coordinates,
+                "Timestamp": timestamp,
+                "Latitude": lat,
+                "Longitude": lon,
                 "audio": file_url,
             }
         ]
@@ -209,7 +211,7 @@ class XenoCantoDownloader(Downloader):
         Args:
             waveform (Tensor): The waveform data.
             base_name (str): The base name for the output files.
-            species_path (str): Species's directory path for saving the files.
+            scientific_name_path (str): Species's directory path for saving the files.
         """
         Path(scientific_name_path).mkdir(parents=True, exist_ok=True)
 

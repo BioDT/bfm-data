@@ -1,12 +1,13 @@
 # src/data_ingestion/api_clients/bold.py
 
 import os
-from multiprocessing import Pool
-from pathlib import Path
+import time
 
 import pycountry
 
+from src.config.paths import ONLY_IMGS_PATHS
 from src.data_ingestion.api_clients.downloader import Downloader
+from src.utils.merge_data import extract_species_names
 
 
 class BOLDDownloader(Downloader):
@@ -50,6 +51,7 @@ class BOLDDownloader(Downloader):
 
             self.process_data(bold_records)
 
+            time.sleep(3)
             break
 
     def download(self, scientific_name: str = None) -> None:
@@ -118,8 +120,6 @@ class BOLDDownloader(Downloader):
                 lat = 0.0
                 lon = 0.0
 
-            coordinates = f"[{lat}, {lon}]"
-
             sequence_info = record_data.get("sequences", {}).get("sequence", [{}])[0]
             sequence_id = sequence_info.get("sequenceID", "Unknown")
             nucleotides = sequence_info.get("nucleotides", "Unknown")
@@ -135,7 +135,8 @@ class BOLDDownloader(Downloader):
                     "Genus": genus,
                     "Scientific_name": scientific_name,
                     "Country": country,
-                    "Coordinates": coordinates,
+                    "Latitude": lat,
+                    "Longitude": lon,
                     "Sequence_id": sequence_id,
                     "Nucleotides": nucleotides,
                 }
@@ -144,3 +145,45 @@ class BOLDDownloader(Downloader):
             self.save_to_csv(
                 data, os.path.join(scientific_name_path, f"{scientific_name}_edna.csv")
             )
+
+    def download_species_based_on_txt(self):
+        """
+        Download species data based on species names extracted from text file paths.
+
+        This function extracts species names from a predefined file path (`ONLY_IMGS_PATHS`),
+        then processes each species name starting from index 853. It downloads data for
+        each species using the `download` method.
+
+        """
+        species_names = extract_species_names(ONLY_IMGS_PATHS)
+        species_names_to_process = species_names[853:]
+        for scientific_name in species_names_to_process:
+            print(f"Processing species: {scientific_name}")
+            self.download(scientific_name)
+
+    def run(self, txt: bool = False, scientific_name: str = None, name: bool = False):
+        """
+        Entry point to run the download process based on user input.
+
+        This function decides the downloading method based on the provided arguments. It can
+        either:
+        1. Trigger the download process based on species names from text (if `txt` is True).
+        2. Trigger the download process for a specific species using its scientific name (if `name` is True).
+        3. Run the default download method if neither `txt` nor `name` is provided.
+
+        Args:
+            txt (bool): If True, download species based on text file paths. Default is False.
+            scientific_name (str): The scientific name of the species to download. Required if `name` is True.
+            name (bool): If True, download species based on the provided `scientific_name`. Default is False.
+        """
+        if txt:
+            self.download_species_based_on_txt()
+        elif name:
+            if scientific_name:
+                self.download(scientific_name)
+            else:
+                raise ValueError(
+                    "Scientific name must be provided when 'name' is True."
+                )
+        else:
+            self.download()

@@ -1,5 +1,6 @@
 # src/monitoring_logging/monitoring/folder_size.py
 
+import logging
 import os
 import time
 
@@ -27,6 +28,9 @@ def monitor_folder_size(folder_path: str, interval: int = 30):
         folder_path (str):
     """
     while True:
-        size = get_folder_size(folder_path)
-        print(f"Current folder size: {size / (1024 * 1024):.2f} MB")
-        time.sleep(interval)
+        try:
+            size = get_folder_size(folder_path)
+            print(f"Current folder size: {size / (1024 * 1024):.2f} MB")
+            time.sleep(interval)
+        except Exception as e:
+            logging.error(f"Error while monitoring folder size: {e}")

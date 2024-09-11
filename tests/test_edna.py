@@ -4,7 +4,7 @@ import os
 import unittest
 from urllib import request
 
-from src.config.settings import TEST_DATA_DIR
+from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.bold import BOLDDownloader
 
 

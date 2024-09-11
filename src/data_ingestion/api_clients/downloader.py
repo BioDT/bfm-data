@@ -2,7 +2,6 @@
 
 import csv
 import os
-import shutil
 
 import requests
 
@@ -29,12 +28,12 @@ class Downloader:
         self.source = source
         self.base_path = os.path.join(data_dir, source)
 
-    def get_base_url_page(self, params: str):
+    def get_base_url_page(self, params: dict):
         """
         Fetch a page from the a source's API.
 
         Args:
-            query (str): The query string to search for specific data.
+            params (dict): The parameters for the API request.
 
         Returns:
             dict: The JSON response from the source's API containing the data.
@@ -43,15 +42,18 @@ class Downloader:
             request = requests.Request("GET", url=self.base_url, params=params)
             prepared_request = request.prepare()
 
-            session = requests.Session()
-            response = session.send(prepared_request)
+            with requests.Session() as session:
+                response = session.send(prepared_request)
+                response.raise_for_status()
 
-            response.raise_for_status()
+                print(f"Response Status Code: {response.status_code}")
+                print(f"Response Content (raw): {response.content}")
 
-            try:
-                return response.json()
-            except requests.exceptions.JSONDecodeError:
-                return None
+                try:
+                    return response.json()
+                except requests.exceptions.JSONDecodeError:
+                    print("Failed to decode JSON from the response.")
+                    return None
         except requests.exceptions.RequestException:
             return None
 

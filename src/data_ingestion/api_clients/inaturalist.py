@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -82,7 +82,6 @@ class iNaturalistDownloader(Downloader):
         page = start_page
         try:
             while True:
-                # print(f"Fetching observations: id_above={id_above}, page={page}")
                 async with self.semaphore:
                     self.throttle_requests()
 
@@ -104,7 +103,6 @@ class iNaturalistDownloader(Downloader):
 
                     cache_key = (page, id_above)
                     if cache_key in self.cache:
-                        # print(f"Cache hit for key: {cache_key}")
                         json_response = self.cache[cache_key]
 
                     else:
@@ -115,10 +113,8 @@ class iNaturalistDownloader(Downloader):
                             self.cache[cache_key] = json_response
 
                     new_observations = json_response.get("results", [])
-                    # print(f"Observations fetched: {len(new_observations)} found.")
 
                     if not new_observations:
-                        # print("No more observations to download.")
                         return
 
                     await self.process_and_download_observations(new_observations)
@@ -126,7 +122,6 @@ class iNaturalistDownloader(Downloader):
                     observations.extend(new_observations)
 
                     if page is not None and page >= self.page_limit:
-                        # print("Page limit reached, switching to id_above.")
                         id_above = new_observations[-1]["id"]
                         page = None
                         continue
@@ -277,7 +272,8 @@ class iNaturalistDownloader(Downloader):
             f"{str(common_name).replace('/', '_')}_{observation_id}_{photo_counter}.jpg",
         )
         csv_path = os.path.join(
-            scientific_name_path, f"{str(common_name).replace('/', '_')}_image.csv"
+            scientific_name_path,
+            f"{str(common_name).replace('/', '_')}_{observation_id}_{photo_counter}_image.csv",
         )
 
         return image_name, csv_path
@@ -303,6 +299,12 @@ class iNaturalistDownloader(Downloader):
         Returns:
             list: A list containing a dictionary of species data.
         """
+        coordinates = observation.get("geojson", {}).get("coordinates", [])
+        if len(coordinates) == 2:
+            lon, lat = coordinates
+        else:
+            lon, lat = None, None
+
         return [
             {
                 "Observation_id": observation.get("id", "Unknown"),
@@ -315,11 +317,12 @@ class iNaturalistDownloader(Downloader):
                 "Family": taxonomy.get("family", "Unknown"),
                 "Genus": taxonomy.get("genus", "Unknown"),
                 "Scientific_name": taxon.get("name", "Unknown"),
-                "Place": observation.get("place_guess", "Unknown"),
-                "Coordinates": observation.get("geojson", {}).get("coordinates", []),
+                "Location": observation.get("place_guess", "Unknown"),
+                "Longitude": lon,
+                "Latitude": lat,
+                "Timestamp": timestamp,
                 "Photo_url": photo_url,
                 "Photo_dimensions": "375x500",
-                "timestamp": timestamp,
             }
         ]
 

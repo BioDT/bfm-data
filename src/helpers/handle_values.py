@@ -1,9 +1,10 @@
 # src/helpers/handle_values.py
 
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta, timezone
 
 
-def parse_date_time(date, time):
+def parse_date_time(date: str, time: str, timezone_offset: str = "+00:00") -> str:
     """
     Parses a date and time string into a standardized ISO 8601 timestamp.
 
@@ -43,8 +44,7 @@ def parse_date_time(date, time):
         Returns:
             str: A normalized time string in 24-hour format or '00:00' for placeholders.
         """
-
-        if any(marker in time for marker in ["xx:xx", "?:?", "x", ":"]):
+        if any(marker in time for marker in ["xx:xx", "?:?", "x"]):
             return "00:00"
 
         if time == "Unknown":
@@ -89,7 +89,11 @@ def parse_date_time(date, time):
 
     try:
         dt = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
-        return dt.isoformat() + "+00:00"
+        hours_offset, minutes_offset = map(int, timezone_offset.split(":"))
+        tz = timezone(timedelta(hours=hours_offset, minutes=minutes_offset))
+        dt = dt.replace(tzinfo=tz)
+        return dt.isoformat()
+
     except ValueError as e:
         print(f"Error parsing date and time: {e}")
         return None

@@ -1,8 +1,8 @@
 # src/data_ingestion/api_clients/era5.py
 
 import cdsapi
-import xarray as xr
 
+from src.config.paths import ERA5_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
 from src.helpers.era5_api_config import ERA5ApiConfigurator
 
@@ -12,7 +12,7 @@ class ERA5Downloader(Downloader):
     Class for downloading and processing climate data from ERA5(Copernicus) hourly data.
     """
 
-    def __init__(self, data_dir, date: str, time: str, area: str):
+    def __init__(self, data_dir, date: str, time: str, area: str = None):
         """
         Initialize the ERA5Downloader.
 
@@ -32,31 +32,30 @@ class ERA5Downloader(Downloader):
         Build the request payload for the ERA5 API based on the level type.
 
         Args:
-            levtype (str): The type of level for which data is being requested (e.g., 'ml', 'pl', 'sfc').
-            'ml': Single Level
-            'pl': Pressure Level
-            'sfc': Land/Surface Level
+            levtype (str): The type of level for which data is being requested (e.g., 'single', 'ressure', 'surface').
+            'single': Single Level
+            'pressure': Pressure Level
+            'surface': Surface Level
 
         Returns:
             dict: A dictionary containing the request parameters.
         """
-        stream = "oper"
-        type = "an"
-        grid = "1.0/1.0"
+        product_type = "reanalysis"
         format = "netcdf"
 
         base_request = {
             "date": self.date,
-            "levtype": "",
-            "levelist": "",
-            "param": "",
-            "stream": stream,
+            "variable": "",
             "time": self.time,
-            "type": type,
-            "area": self.area,
-            "grid": grid,
-            "format": format,
+            "product_type": product_type,
+            "data_format": format,
         }
+
+        if levtype == "pressure":
+            base_request["pressure_level"] = ""
+
+        if self.area is not None:
+            base_request["area"] = self.area
 
         levtype_values = self.set_levtype_values(levtype)
         request = {**base_request, **levtype_values}
@@ -73,59 +72,81 @@ class ERA5Downloader(Downloader):
             dict: A dictionary with specific parameters for the given level type.
         """
 
-        if levtype == "ml":
-            """
-            129: Geopotential, , 130: Temperature, 131: U component of wind,
-            132: V componentof wind, 133: Specific humidity
-            """
+        if levtype == "single":
             return {
-                "levtype": "ml",
-                "levelist": "1/10/100/137",
-                "param": "129/130/131/132/133",
+                "variable": [
+                    "geopotential",
+                    "land_sea_mask",
+                    "soil_type",
+                ]
             }
-        elif levtype == "pl":
-            """
-            129.128: Geopotential, 130.128: Temperature, 131: U component of wind,
-            132: V componentof wind, 133.128: Specific humidity
-            """
+        elif levtype == "pressure":
             return {
-                "levtype": "pl",
-                "levelist": "50/100/150/200/250/300/400/500/600/700/850/925/1000",
-                "param": "129.128/130.128/131/132/133.128",
+                "pressure_level": [
+                    "50",
+                    "100",
+                    "150",
+                    "200",
+                    "250",
+                    "300",
+                    "400",
+                    "500",
+                    "600",
+                    "700",
+                    "850",
+                    "925",
+                    "1000",
+                ],
+                "variable": [
+                    "geopotential",
+                    "temperature",
+                    "u_component_of_wind",
+                    "v_component_of_wind",
+                    "specific_humidity",
+                ],
             }
-        elif levtype == "sfc":
-            """
-            151.128: Mean sea level pressure, 165.128: 10 metre U wind component,
-             166.128: 10 metre V wind component, 167.128: 2 metre temperature
-            """
+        elif levtype == "surface":
             return {
-                "levtype": "sfc",
-                "param": "151.128/165.128/166.128/167.128",
+                "variable": [
+                    "mean_sea_level_pressure",
+                    "2m_temperature",
+                    "10m_u_component_of_wind",
+                    "10m_v_component_of_wind",
+                ],
             }
         else:
             raise ValueError(f"Unsupported levtype: {levtype}")
 
-    def get_data(self, levtype: str):
+    def get_data(self, levtype: str, start_date: str, end_date: str):
         """
         Retrieve data from the ERA5 dataset based on the specified level type.
 
         Args:
             levtype (str): The type of level for which data is being requested.
+            start_date (str): The start date for which data is being requested.
+            end_date (str): The end date for which data is being requested.
         """
-        dataset_name = "reanalysis-era5-complete"
+        atmospheric_dataset_name = "reanalysis-era5-pressure-levels"
+        single_dataset_name = "reanalysis-era5-single-levels"
         request = self.build_request(levtype)
 
         connection = cdsapi.Client(url=self.url, key=self.key, verify=True)
 
-        if levtype == "ml":
+        if levtype == "single":
             connection.retrieve(
-                dataset_name, request, "data/ERA5/ERA5-Reanalysis-single-2010-2023.nc"
+                single_dataset_name,
+                request,
+                f"{ERA5_DIR}/ERA5-Reanalysis-single-{start_date}-{end_date}.nc",
             )
-        elif levtype == "pl":
+        elif levtype == "pressure":
             connection.retrieve(
-                dataset_name, request, "data/ERA5/ERA5-Reanalysis-pressure-2010-2023.nc"
+                atmospheric_dataset_name,
+                request,
+                f"{ERA5_DIR}/ERA5-Reanalysis-pressure-{start_date}-{end_date}.nc",
             )
-        elif levtype == "sfc":
+        elif levtype == "surface":
             connection.retrieve(
-                dataset_name, request, "data/ERA5/ERA5-Reanalysis-surface-2010-2023.nc"
+                single_dataset_name,
+                request,
+                f"{ERA5_DIR}/ERA5-Reanalysis-surface-{start_date}-{end_date}.nc",
             )

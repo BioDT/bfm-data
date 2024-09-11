@@ -5,7 +5,7 @@ import concurrent.futures
 import gc
 import threading
 
-from src.config import settings
+from src.config.paths import DATA_DIR, LIFE_DIR
 from src.data_ingestion.api_clients.bold import BOLDDownloader
 from src.data_ingestion.api_clients.era5 import ERA5Downloader
 from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
@@ -23,32 +23,47 @@ def era5():
     Time should be in this form '00/to/23/by/6', means 00:00, 06:00, 12:00 ...
     Area sould be max-min latitude and longitude, '80/-50/-25/0' means global.
     Options :
-        'ml': Single Level
-        'pl': Pressure Level
-        'sfc': Land/Surface Level
+        'single': Single Level
+        'pressure': Pressure Level
+        'surface': Land/Surface Level
     """
-    date, time, area = "2010-01-01/to/2023-12-31", "00/to/23/by/6", "80/-50/-25/0"
-    era5_downloader = ERA5Downloader(settings.DATA_DIR, date, time, area)
-    era5_downloader.get_data("ml")
+    start_date = "2005-01-01"
+    end_date = "2009-12-31"
+    date, time = f"{start_date}/{end_date}", "00/to/23/by/6"
+    era5_downloader = ERA5Downloader(DATA_DIR, date, time)
+    levels = ["pressure", "surface"]
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(era5_downloader.get_data, level, start_date, end_date)
+            for level in levels
+        ]
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                result = future.result()
+                print(f"Request completed with result: {result}")
+            except Exception as e:
+                print(f"Request generated an exception: {e}")
 
 
 def xeno_canto():
-    xeno_canto_downloader = XenoCantoDownloader(settings.DATA_DIR)
+    xeno_canto_downloader = XenoCantoDownloader(DATA_DIR)
     xeno_canto_downloader.download()
 
 
 async def iNaturalist():
-    iNaturalist = iNaturalistDownloader(settings.DATA_DIR)
+    iNaturalist = iNaturalistDownloader(DATA_DIR)
     await iNaturalist.run()
 
 
 def BOLD():
-    bold_downloader = BOLDDownloader(settings.DATA_DIR)
-    bold_downloader.download()
+    bold_downloader = BOLDDownloader(DATA_DIR)
+    bold_downloader.run()
 
 
 def mapoflife():
-    mol_downloader = MOL(settings.DATA_DIR)
+    mol_downloader = MOL(DATA_DIR)
     mol_downloader.get_save_data("Malurus cyaneus", "MOL.csv")
 
 
@@ -64,13 +79,9 @@ def run_async_in_thread(async_func):
 
 def main():
 
-    print(
-        f"Initial folder size: {get_folder_size(settings.LIFE_DIR) / (1024 * 1024):.2f} MB"
-    )
+    print(f"Initial folder size: {get_folder_size(LIFE_DIR) / (1024 * 1024):.2f} MB")
 
-    monitoring_thread = threading.Thread(
-        target=monitor_folder_size, args=(settings.LIFE_DIR,)
-    )
+    monitoring_thread = threading.Thread(target=monitor_folder_size, args=(LIFE_DIR,))
     monitoring_thread.daemon = True
     monitoring_thread.start()
 

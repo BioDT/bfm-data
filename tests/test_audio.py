@@ -10,7 +10,7 @@ import torchaudio
 from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
 from src.data_preprocessing.feature_extraction.audio import extract_mfcc
-from src.data_preprocessing.process import process_audio
+from src.data_preprocessing.preprocess import preprocess_audio
 
 
 class TestAudio(unittest.TestCase):
@@ -53,7 +53,7 @@ class TestAudio(unittest.TestCase):
             f"Input file does not exist: {input_file_path}",
         )
 
-        process_audio(input_file_path, output_file_path)
+        preprocess_audio(input_file_path, output_file_path)
 
         self.assertTrue(
             os.path.exists(output_file_path),

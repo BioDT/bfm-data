@@ -5,12 +5,13 @@ import concurrent.futures
 import gc
 import threading
 
-from src.config.paths import DATA_DIR, LIFE_DIR
+from src.config.paths import DATA_DIR, ERA5_DIR, LIFE_DIR, PROCESSED_DATA_DIR
 from src.data_ingestion.api_clients.bold import BOLDDownloader
 from src.data_ingestion.api_clients.era5 import ERA5Downloader
 from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
 from src.data_ingestion.api_clients.mapoflife import MOL
 from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
+from src.dataset_creation.create_dataset import create_dataset, create_species_dataset
 from src.monitoring_logging.monitoring.folder_size import (
     get_folder_size,
     monitor_folder_size,
@@ -27,11 +28,11 @@ def era5():
         'pressure': Pressure Level
         'surface': Land/Surface Level
     """
-    start_date = "2005-01-01"
-    end_date = "2009-12-31"
+    start_date = "2001-01-01"
+    end_date = "2001-02-31"
     date, time = f"{start_date}/{end_date}", "00/to/23/by/6"
     era5_downloader = ERA5Downloader(DATA_DIR, date, time)
-    levels = ["pressure", "surface"]
+    levels = ["pressure"]
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
@@ -64,7 +65,7 @@ def BOLD():
 
 def mapoflife():
     mol_downloader = MOL(DATA_DIR)
-    mol_downloader.get_save_data("Malurus cyaneus", "MOL.csv")
+    mol_downloader.run()
 
 
 def run_async_in_thread(async_func):
@@ -77,25 +78,68 @@ def run_async_in_thread(async_func):
     loop.close()
 
 
+from src.dataset_creation.load_data import load_species_data
+
+
 def main():
 
-    print(f"Initial folder size: {get_folder_size(LIFE_DIR) / (1024 * 1024):.2f} MB")
+    # print(f"Initial folder size: {get_folder_size(LIFE_DIR) / (1024 * 1024):.2f} MB")
 
-    monitoring_thread = threading.Thread(target=monitor_folder_size, args=(LIFE_DIR,))
-    monitoring_thread.daemon = True
-    monitoring_thread.start()
+    # monitoring_thread = threading.Thread(target=monitor_folder_size, args=(LIFE_DIR,))
+    # monitoring_thread.daemon = True
+    # monitoring_thread.start()
 
-    functions = [lambda: run_async_in_thread(iNaturalist()), xeno_canto, BOLD]
+    # functions = [lambda: run_async_in_thread(iNaturalist()), xeno_canto, BOLD]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(fn) for fn in functions]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Function raised an exception: {e}")
-            finally:
-                gc.collect()
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    #     futures = [executor.submit(fn) for fn in functions]
+    #     for future in concurrent.futures.as_completed(futures):
+    #         try:
+    #             future.result()
+    #         except Exception as e:
+    #             print(f"Function raised an exception: {e}")
+    #         finally:
+    #             gc.collect()
+    # create_multimodal_dataset(LIFE_DIR, f"{DATA_DIR}multimodal_dataset_final.parquet")
+    # dataset.to_csv("dataset.csv", encoding='utf-8')
+    # era5()
+
+    species_file = f"{PROCESSED_DATA_DIR}/species_dataset.parquet"
+
+    # dataset = load_species_data(species_file, 10)
+    # print(dataset)
+
+    # create_species_dataset(LIFE_DIR, species_file)
+
+    # Try reading the file
+
+    # batch_size = 10
+
+    # # Open the parquet file as a reader
+    # parquet_reader = pq.ParquetFile(species_file)
+
+    # counter = 0
+    # for batch in parquet_reader.iter_batches(batch_size=batch_size):
+    #     df = batch.to_pandas()
+    #     print(df.head())
+    #     print(counter)
+    #     counter += 1
+
+    # parquet_reader.close()
+
+    surface_file = f"{ERA5_DIR}/ERA5-Reanalysis-surface-2001-01-01-2001-12-31.nc"
+    single_file = f"{ERA5_DIR}/ERA5-Reanalysis-single-2001-01-01-2001-12-31.nc"
+    pressure_file = f"{ERA5_DIR}/ERA5-Reanalysis-pressure-2001-01-01-2001-02-31.nc"
+
+    dataset_file = f"{PROCESSED_DATA_DIR}/final_dataset.parquet"
+    batches = create_dataset(
+        species_file, surface_file, single_file, pressure_file, dataset_file
+    )
+
+    for batch in batches:
+        print(batch)
+
+    # mapoflife()
 
 
 if __name__ == "__main__":

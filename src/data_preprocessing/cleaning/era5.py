@@ -1,77 +1,68 @@
 # src/data_preprocessing/cleaning/era5.py
 
+import numpy as np
+import torch
 import xarray as xr
+from scipy.interpolate import RegularGridInterpolator as RGI
 
-from src.data_preprocessing.batch import DataBatch
 
-
-def handle_missing_values(data: xr.Dataset, method: str = "interpolate") -> xr.Dataset:
+def interpolate(
+    v: torch.Tensor,
+    lat: torch.Tensor,
+    lon: torch.Tensor,
+    lat_new: torch.Tensor,
+    lon_new: torch.Tensor,
+) -> torch.Tensor:
     """
-    Handle missing values in the ERA5 dataset.
-
-    Args:
-        data (xr.Dataset): The input dataset containing ERA5 data.
-        method (str, optional): The method used to handle missing values.
-            Available options are 'interpolate', 'fill', and 'drop'. Defaults to 'interpolate'.
-
-    Returns:
-        xr.Dataset: The dataset with missing values handled according to the specified method.
+    Interpolate a variable `v` with latitudes `lat` and longitudes `lon` to new latitudes
+    `lat_new` and new longitudes `lon_new`.
     """
-    if method == "interpolate":
-        data = data.interpolate_na(dim="time", method="linear")
-    elif method == "fill":
-        data = data.fillna(data.mean())
-    elif method == "drop":
-        data = data.dropna(dim="time", how="any")
-    return data
-
-
-def crop(self, patch_size: int) -> "DataBatch":
-    """
-    Crop the variables in the batch to the specified patch size.
-
-    Args:
-        patch_size (int): The target patch size to crop the data to.
-
-    Returns:
-        Batch: A new batch with variables cropped to the specified patch size.
-
-    Raises:
-        ValueError: If the width of the data is not a multiple of the patch size.
-        ValueError: If more than one latitude is not divisible by the patch size.
-    """
-    height, width = self.spatial_dimensions
-
-    if width % patch_size != 0:
-        raise ValueError(
-            f"Data width ({width}) must be a multiple of the patch size ({patch_size})."
+    return torch.from_numpy(
+        interpolate_numpy(
+            v.double().numpy(),
+            lat.double().numpy(),
+            lon.double().numpy(),
+            lat_new.double().numpy(),
+            lon_new.double().numpy(),
         )
+    ).float()
 
-    if height % patch_size == 0:
-        return self
 
-    elif height % patch_size == 1:
-        cropped_surface = {
-            key: value[..., :-1, :] for key, value in self.surface_variables.items()
-        }
-        cropped_static = {
-            key: value[:-1, :] for key, value in self.single_variables.items()
-        }
-        cropped_atmospheric = {
-            key: value[..., :-1, :] for key, value in self.atmospheric_variables.items()
-        }
+def interpolate_numpy(
+    v: np.ndarray,
+    lat: np.ndarray,
+    lon: np.ndarray,
+    lat_new: np.ndarray,
+    lon_new: np.ndarray,
+) -> np.ndarray:
+    """Like :func:`.interpolate`, but for NumPy tensors."""
 
-        return DataBatch(
-            surface_variables=cropped_surface,
-            static_variables=cropped_static,
-            atmospheric_variables=cropped_atmospheric,
-            batch_metadata=self.batch_metadata,
+    assert (np.diff(lon) > 0).all()
+    lon = np.concatenate((lon[-1:] - 360, lon, lon[:1] + 360))
+
+    batch_shape = v.shape[:-2]
+    v = v.reshape(-1, *v.shape[-2:])
+
+    vs_regridded = []
+    for vi in v:
+        vi = np.concatenate((vi[:, -1:], vi, vi[:, :1]), axis=1)
+
+        rgi = RGI(
+            (lat, lon),
+            vi,
+            method="linear",
+            bounds_error=False,
+            fill_value=None,
         )
-    else:
-        excess_rows = height % patch_size
-        raise ValueError(
-            f"Expected at most one extra latitude row, but found {excess_rows}."
+        lat_new_grid, lon_new_grid = np.meshgrid(
+            lat_new,
+            lon_new,
+            indexing="ij",
+            sparse=True,
         )
+        vs_regridded.append(rgi((lat_new_grid, lon_new_grid)))
 
+    v_regridded = np.stack(vs_regridded, axis=0)
+    v_regridded = v_regridded.reshape(*batch_shape, lat_new.shape[0], lon_new.shape[0])
 
-DataBatch.crop = crop
+    return v_regridded

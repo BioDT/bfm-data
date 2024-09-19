@@ -1,7 +1,6 @@
 # src/data_preprocessing/cleaning/audio.py
 
 import torch
-import torchaudio
 
 
 def remove_silence(
@@ -22,6 +21,9 @@ def remove_silence(
     Returns:
         torch.Tensor: The audio waveform with silenced segments removed.
     """
+    if waveform.size(0) > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+
     min_silence_samples = int(min_silence_duration * sample_rate)
 
     silence_mask = torch.abs(waveform) < silence_threshold
@@ -74,6 +76,9 @@ def reduce_noise(
     n_fft = 1024
     hop_length = 512
     window = torch.hann_window(n_fft)
+
+    if waveform.size(1) < hop_length:
+        return waveform
 
     stft = torch.stft(
         waveform, n_fft=n_fft, hop_length=hop_length, window=window, return_complex=True

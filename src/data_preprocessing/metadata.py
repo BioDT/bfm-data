@@ -20,9 +20,14 @@ class BatchMetadata:
             a different LoRA for each roll-out step. Usually, this field can be ignored.
     """
 
-    latitude: torch.Tensor
-    longitude: torch.Tensor
-    timestamp: tuple[datetime, ...]
+    era5_latitude: torch.Tensor
+    era5_longitude: torch.Tensor
+    era5_timestamp: tuple[datetime, ...]
+
+    species_latitude: torch.Tensor
+    species_longitude: torch.Tensor
+    species_timestamp: tuple[datetime, ...]
+
     pressure_levels: tuple[int | float, ...]
     prediction_step: int = 0
 
@@ -37,17 +42,18 @@ class BatchMetadata:
         Raises:
             ValueError: If any of the conditions are not met.
         """
-        if not torch.all(self.latitude[1:] - self.latitude[:-1] < 0):
+        if not torch.all(self.era5_latitude[1:] - self.era5_latitude[:-1] < 0):
             raise ValueError("Latitudes must be strictly decreasing.")
 
-        if not (torch.all(self.latitude <= 90) and torch.all(self.latitude >= -90)):
+        if not (
+            torch.all(self.era5_latitude <= 90) and torch.all(self.era5_latitude >= -90)
+        ):
             raise ValueError("Latitudes must be within the range [-90, 90].")
 
-        diffs = self.longitude[1:] - self.longitude[:-1]
-        if not torch.all((diffs > 0) | (diffs < -350)):
-            raise ValueError(
-                "Longitudes must be strictly increasing, with allowances for wrap-around."
-            )
+        if not torch.all(self.era5_longitude[1:] - self.era5_longitude[:-1] > 0):
+            raise ValueError("Longitudes must be strictly increasing.")
 
-        if not (torch.all(self.longitude >= 0) and torch.all(self.longitude < 360)):
-            raise ValueError("Longitudes must be within the range [0, 360).")
+        if not (
+            torch.all(self.era5_longitude >= 0) and torch.all(self.era5_longitude < 360)
+        ):
+            raise ValueError("Longitudes must be in the range [0, 360).")

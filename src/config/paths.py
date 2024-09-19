@@ -7,6 +7,9 @@ LIFE_DIR = "../../../data/projects/biodt/storage/data/Life"
 ERA5_DIR = "../../../data/projects/biodt/storage/data/Copernicus/ERA5"
 
 TEST_DATA_DIR = "../../../data/projects/biodt/storage/test_data"
+BATCHES_DATA_DIR = "../../../data/projects/biodt/storage/batches"
+
+PROCESSED_DATA_DIR = "../../../data/projects/biodt/storage/processed_data"
 
 ERA5_CONFIG_PATH = Path.home() / "bfm-data/src/config/era5_config/cds_api.txt"
 CDSAPI_CONFIG_PATH = Path.home() / ".cdsapirc"
@@ -22,3 +25,4 @@ XENO_CANTO_PROCESSED_LOG_FILE = (
 )
 
 ONLY_IMGS_PATHS = "../../../data/projects/biodt/storage/folders_with_only_jpg.txt"
+ALL_MOD_PATHS = "../../../data/projects/biodt/storage/matching_directories.txt"

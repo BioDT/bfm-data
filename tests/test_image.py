@@ -7,7 +7,7 @@ from urllib import request
 
 from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
-from src.data_preprocessing.process import process_image
+from src.data_preprocessing.preprocess import preprocess_image
 
 
 class TestAudio(unittest.IsolatedAsyncioTestCase):
@@ -60,8 +60,8 @@ class TestAudio(unittest.IsolatedAsyncioTestCase):
             f"Input file does not exist: {input_file_path_2}",
         )
 
-        process_image(input_file_path, output_file_path)
-        process_image(input_file_path_2, output_file_path_2)
+        preprocess_image(input_file_path, output_file_path)
+        preprocess_image(input_file_path_2, output_file_path_2)
 
         self.assertTrue(
             os.path.exists(output_file_path),

@@ -36,6 +36,8 @@ nltk = "^3.9.1"
 textblob = "^0.18.0.post0"
 netcdf4 = "^1.7.1.post2"
 cachetools = "^5.5.0"
+transformers = "^4.44.2"
+dask = "^2024.9.0"
 
 [tool.poetry.scripts]
 run-app = "src.main:main"

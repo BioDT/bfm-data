@@ -2,8 +2,6 @@
 
 import torch
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import GloVe
 
 
 def extract_bag_of_words(corpus: list, max_features: int = 1000) -> torch.Tensor:
@@ -55,31 +53,3 @@ def extract_ngram_features(
     vectorizer = CountVectorizer(ngram_range=ngram_range, max_features=max_features)
     X = vectorizer.fit_transform(corpus)
     return torch.tensor(X.toarray(), dtype=torch.float32)
-
-
-def extract_glove_embeddings(corpus, embedding_dim=100):
-    """
-    Extracts GloVe word embeddings for each word in the corpus and averages them for sentence-level representation.
-
-    Args:
-        corpus (list of str): The input text corpus.
-        embedding_dim (int): The dimensionality of the GloVe embeddings (50, 100, 200, 300).
-
-    Returns:
-        torch.Tensor: Tensor containing averaged GloVe embeddings for each sentence.
-    """
-    tokenizer = get_tokenizer("basic_english")
-    glove = GloVe(name="6B", dim=embedding_dim)
-
-    embeddings = []
-
-    for sentence in corpus:
-        tokens = tokenizer(sentence)
-        word_vectors = [glove[token] for token in tokens if token in glove.stoi]
-        if word_vectors:
-            sentence_embedding = torch.mean(torch.stack(word_vectors), dim=0)
-        else:
-            sentence_embedding = torch.zeros(embedding_dim)
-        embeddings.append(sentence_embedding)
-
-    return torch.stack(embeddings)

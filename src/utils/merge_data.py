@@ -1,89 +1,130 @@
 # src/utils/merge_data.py
 
 import os
-import random
+from datetime import datetime
+from typing import Tuple
 
 import pandas as pd
-import pyarrow as pa
-
-from src.config.paths import LIFE_DIR
 
 
-def processing():
+def average_coordinates_and_time(
+    image_lat: float,
+    image_lon: float,
+    image_time: str,
+    audio_lat: float,
+    audio_lon: float,
+    audio_time: str,
+) -> Tuple[float, float, datetime]:
     """
-    Processes files in a directory structure to create a combined dataset of images and sounds.
+    This function calculates the average latitude, longitude, and timestamp between an image and an audio file.
 
-    This function walks through a directory specified in the settings.LIFE_DIR configuration,
-    identifies files by their type (image, sound, csv, unknown), and organizes them into a
-    Pandas DataFrame. The function then groups the files by species, pairs images and sounds
-    together, and saves the combined data to a Parquet file.
+    Parameters:
+    - image_lat (float): Latitude of the image.
+    - image_lon (float): Longitude of the image.
+    - image_time (str or datetime): Timestamp of the image.
+    - audio_lat (float): Latitude of the audio recording.
+    - audio_lon (float): Longitude of the audio recording.
+    - audio_time (str or datetime): Timestamp of the audio recording.
 
-    Steps:
-    1. Traverse the directory tree rooted at settings.LIFE_DIR.
-    2. Identify file types based on their extensions.
-    3. Create a DataFrame to index the files with columns for country, species, file type, and file path.
-    4. Group the indexed files by species.
-    5. For each species, pair images with sounds and create a combined DataFrame.
-    6. Save the combined DataFrame to a Parquet file.
-
-    Output:
-    - A CSV file named "file_index.csv" containing the indexed files.
-    - A Parquet file named "combined_data.parquet" containing paired images and sounds for each species.
+    Returns:
+    - avg_lat (float): Averaged latitude between the image and audio.
+    - avg_lon (float): Averaged longitude between the image and audio.
+    - avg_time (datetime): Averaged timestamp between the image and audio.
     """
-    records = []
+    avg_lat = (image_lat + audio_lat) / 2
+    avg_lon = (image_lon + audio_lon) / 2
 
-    for root, _, files in os.walk(LIFE_DIR):
-        for file in files:
-            file_path = os.path.join(root, file)
+    image_time = pd.to_datetime(image_time)
+    audio_time = pd.to_datetime(audio_time)
+    avg_time = image_time + (audio_time - image_time) / 2
 
-            country = root.split("/")[2]
-            species = root.split("/")[3]
-            file_type = (
-                "image"
-                if file.lower().endswith((".png", ".jpg", ".jpeg"))
-                else "sound"
-                if file.lower().endswith((".wav", ".mp3"))
-                else "csv"
-                if file.lower().endswith(".csv")
-                else "unknown"
+    return avg_lat, avg_lon, avg_time
+
+
+def matching_image_audios(
+    image_metadata: pd.DataFrame, audio_metadata: pd.DataFrame
+) -> list:
+    """
+    This function matches each image with every audio and vice versa.
+
+    Parameters:
+    - image_metadata (DataFrame): A DataFrame containing metadata for images.
+    - audio_metadata (DataFrame): A DataFrame containing metadata for audio files.
+
+    Returns:
+    - matched_pairs (list): A list of dictionaries, where each dictionary contains the image path, audio path,
+                            averaged latitude, averaged longitude, and averaged timestamp for a single pair.
+    """
+    matched_pairs = []
+
+    for _, image_row in image_metadata.iterrows():
+        for _, audio_row in audio_metadata.iterrows():
+            avg_lat, avg_lon, avg_time = average_coordinates_and_time(
+                image_row["Latitude"],
+                image_row["Longitude"],
+                image_row["Timestamp"],
+                audio_row["Latitude"],
+                audio_row["Longitude"],
+                audio_row["Timestamp"],
             )
-            records.append(
+
+            matched_pairs.append(
                 {
-                    "country": country,
-                    "species": species,
-                    "file_type": file_type,
-                    "file_path": file_path,
+                    "Image_path": image_row["Image_path"],
+                    "Audio_path": audio_row["Audio_path"],
+                    "Latitude": avg_lat,
+                    "Longitude": avg_lon,
+                    "Timestamp": avg_time,
                 }
             )
 
-    df_files = pd.DataFrame(records)
-    df_files.to_csv("file_index.csv", index=False)
+    return matched_pairs
 
-    grouped = df_files.groupby("species")
 
-    combined_records = []
+def extract_metadata_from_csv(metadata_file_path: str, file_type: str) -> dict:
+    """
+    Extracts metadata from the given CSV file and derives the corresponding image or audio file path.
 
-    for species, group in grouped:
-        images = group[group["file_type"] == "image"]["file_path"].tolist()
-        sounds = group[group["file_type"] == "sound"]["file_path"].tolist()
+    Parameters:
+    - metadata_file_path (str): Path to the metadata CSV file (either for images or audios).
+    - file_type (str): Specifies whether the file is 'image' or 'audio' to derive the correct path.
 
-        if images and sounds:
-            max_len = max(len(images), len(sounds))
+    Returns:
+    - metadata (dict): A dictionary containing the derived image or audio path, latitude, longitude, and timestamp.
+    """
+    metadata = pd.read_csv(metadata_file_path)
 
-            paired_images = images * (max_len // len(images)) + random.sample(
-                images, max_len % len(images)
-            )
-            paired_sounds = sounds * (max_len // len(sounds)) + random.sample(
-                sounds, max_len % len(sounds)
-            )
+    if file_type == "image":
+        return {
+            "Image_path": metadata_file_path.replace("_image.csv", ".jpg"),
+            "Latitude": metadata["Latitude"].values[0],
+            "Longitude": metadata["Longitude"].values[0],
+            "Timestamp": metadata["Timestamp"].values[0],
+        }
+    elif file_type == "audio":
+        return {
+            "Audio_path": metadata_file_path.replace("_audio.csv", ".wav"),
+            "Latitude": metadata["Latitude"].values[0],
+            "Longitude": metadata["Longitude"].values[0],
+            "Timestamp": metadata["Timestamp"].values[0],
+        }
 
-            for img, snd in zip(paired_images, paired_sounds):
-                combined_records.append(
-                    {"species": species, "image": img, "sound": snd}
-                )
 
-    df_combined = pd.DataFrame(combined_records)
-    df_combined.to_parquet("combined_data.parquet", engine="pyarrow")
+def folder_has_all_modalities(species_path: str) -> bool:
+    """
+    Checks if a species folder contains at least one image, one audio, and one eDNA file.
+
+    Parameters:
+    - species_path (str): Path to the species folder.
+
+    Returns:
+    - has_all_modalities (bool): True if the folder contains at least one image, one audio, and one eDNA file, otherwise False.
+    """
+    has_images = any(file.endswith("_image.csv") for file in os.listdir(species_path))
+    has_audios = any(file.endswith("_audio.csv") for file in os.listdir(species_path))
+    has_edna = any(file.endswith("_edna.csv") for file in os.listdir(species_path))
+
+    return has_images and has_audios and has_edna
 
 
 def extract_species_names(file_path: str) -> list:

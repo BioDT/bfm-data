@@ -11,7 +11,7 @@ import torchaudio.transforms as T
 
 from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
-from src.helpers.handle_values import parse_date_time
+from src.utils.handle_values import parse_date_time
 
 
 class XenoCantoDownloaderFromFile:

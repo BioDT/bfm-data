@@ -23,18 +23,3 @@ def extract_kmer_frequencies(sequence: str, k: int = 4) -> dict:
     }
 
     return kmer_frequencies
-
-
-def calculate_gc_content(sequence: str) -> float:
-    """
-    Calculate GC content of a DNA sequence.
-
-    Args:
-        sequence (str): Cleaned DNA sequence.
-
-    Returns:
-        float: GC content as a proportion.
-    """
-    gc_count = sequence.count("G") + sequence.count("C")
-    gc_content = gc_count / len(sequence)
-    return gc_content

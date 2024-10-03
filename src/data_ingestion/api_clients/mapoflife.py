@@ -2,7 +2,7 @@
 
 import os
 
-from src.config.paths import ALL_MOD_PATHS
+from src.config.paths import ALL_MOD_PATHS, DATA_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
 from src.utils.merge_data import extract_species_names
 
@@ -58,9 +58,6 @@ class MOL(Downloader):
         scientific_name_path = os.path.join(self.base_path, scientific_name)
         os.makedirs(scientific_name_path, exist_ok=True)
 
-        print(formatted_description)
-        print(redlist)
-
         data.append(
             {
                 "Scientific_name": scientific_name,
@@ -87,5 +84,12 @@ class MOL(Downloader):
         species_names = extract_species_names(ALL_MOD_PATHS)
 
         for scientific_name in species_names:
-            print(f"Processing species: {scientific_name}")
             self.get_save_data(scientific_name)
+
+
+def mop():
+    """
+    Run the MOLDownloader for barcode of life data.
+    """
+    bold_downloader = MOL(DATA_DIR)
+    bold_downloader.run()

@@ -4,6 +4,7 @@ from itertools import product
 
 import numpy as np
 import torch
+from sklearn.decomposition import PCA
 
 
 def one_hot_encode_sequence(sequence: str, max_length: int = 512) -> torch.Tensor:
@@ -54,4 +55,21 @@ def vectorize_kmer_frequencies(
         if kmer in kmer_to_index:
             vector[kmer_to_index[kmer]] = freq
 
-    return vector
+    return torch.from_numpy(vector).float()
+
+
+def normalize_kmer_vector(vector: np.array) -> np.array:
+    """
+    Normalize the k-mer vector so that the sum of the vector is 1.
+
+    Args:
+        vector (np.array): Input k-mer frequency vector.
+
+    Returns:
+        np.array: Normalized k-mer frequency vector.
+    """
+    vector_sum = torch.sum(vector)
+    if vector_sum > 0:
+        return vector / vector_sum
+    else:
+        return vector

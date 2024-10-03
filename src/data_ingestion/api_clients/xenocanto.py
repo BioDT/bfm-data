@@ -9,6 +9,7 @@ import requests
 import torchaudio
 import torchaudio.transforms as T
 
+from src.config.paths import DATA_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
 from src.utils.handle_values import parse_date_time
 
@@ -223,3 +224,23 @@ class XenoCantoDownloader(Downloader):
             torchaudio.save(file_path, waveform, self.AUDIO_SAMPLE_RATE)
         except Exception as e:
             print(f"Failed to save audio file {file_path}: {str(e)}")
+
+
+def xeno_canto(
+    species: str = "", download_all: bool = False, audio_sample_rate: int = 16000
+):
+    """
+    Function to initialize XenoCantoDownloader and download bird songs for the specified species or all species.
+
+    Args:
+        species (str): Scientific name of the species. If empty, download all species.
+        download_all (bool): Flag indicating if all species should be downloaded. Defaults to False.
+        data_dir (str): Directory to store downloaded data.
+        audio_sample_rate (int): Sample rate for the downloaded audio. Defaults to 16000 Hz.
+    """
+    downloader = XenoCantoDownloader(DATA_DIR, audio_sample_rate)
+
+    if download_all:
+        downloader.download()
+    else:
+        downloader.download(species)

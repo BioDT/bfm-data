@@ -3,22 +3,7 @@
 import torch
 import torchaudio
 
-
-def pad_waveform(waveform: torch.Tensor, target_length: int) -> torch.Tensor:
-    """
-    Pads the waveform to the target length with zeros if it's shorter.
-
-    Args:
-        waveform (torch.Tensor): The input audio waveform.
-        target_length (int): The minimum length to pad the waveform to.
-
-    Returns:
-        torch.Tensor: The padded waveform.
-    """
-    if waveform.shape[1] < target_length:
-        padding_size = target_length - waveform.shape[1]
-        waveform = torch.nn.functional.pad(waveform, (0, padding_size))
-    return waveform
+from src.data_preprocessing.transformation.audio import pad_or_truncate
 
 
 def extract_mfcc(
@@ -37,7 +22,7 @@ def extract_mfcc(
     """
     n_fft = 512
     min_waveform_length = n_fft
-    waveform = pad_waveform(waveform, min_waveform_length)
+    waveform = pad_or_truncate(waveform, min_waveform_length)
     hop_length = 160
 
     mfcc_transform = torchaudio.transforms.MFCC(

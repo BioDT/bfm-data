@@ -7,8 +7,8 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from textblob import TextBlob
 
-nltk.download("stopwords")
-nltk.download("wordnet")
+nltk.download("stopwords", quiet=True)
+nltk.download("wordnet", quiet=True)
 
 
 def clean_text(

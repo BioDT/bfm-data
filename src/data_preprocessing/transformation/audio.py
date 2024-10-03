@@ -36,10 +36,101 @@ def convert_to_spectrogram(audio: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The spectrogram tensor.
     """
     spectrogram_transform = torchaudio.transforms.Spectrogram(
-        n_fft=1024, hop_length=512, power=None
+        n_fft=1024, hop_length=512, power=2.0
     )
     spectrogram = spectrogram_transform(audio)
     return spectrogram
+
+
+def convert_to_log_mel_spectrogram(
+    audio: torch.Tensor, sample_rate: int
+) -> torch.Tensor:
+    """
+    Converts audio to a log-mel spectrogram.
+
+    Args:
+        audio (torch.Tensor): The input audio tensor.
+        sample_rate (int): The sample rate of the audio.
+
+    Returns:
+        torch.Tensor: The log-mel spectrogram tensor.
+    """
+    mel_spectrogram_transform = torchaudio.transforms.MelSpectrogram(
+        sample_rate=sample_rate, n_fft=1024, hop_length=512, n_mels=128
+    )
+
+    mel_spectrogram = mel_spectrogram_transform(audio)
+
+    log_mel_spectrogram = torch.log(mel_spectrogram + 1e-9)
+
+    return log_mel_spectrogram
+
+
+def pad_or_truncate(waveform: torch.Tensor, max_length: int) -> torch.Tensor:
+    """
+    Pads or truncates the waveform to the specified max_length.
+
+    Args:
+        waveform (torch.Tensor): The input audio waveform.
+        max_length (int): The maximum length to pad or truncate the waveform to.
+
+    Returns:
+        torch.Tensor: The padded or truncated waveform.
+    """
+
+    if waveform.size(1) < max_length:
+        padding_size = max_length - waveform.size(1)
+        waveform = torch.nn.functional.pad(waveform, (0, padding_size))
+
+    elif waveform.size(1) > max_length:
+        waveform = waveform[:, :max_length]
+
+    return waveform
+
+
+def pad_or_truncate_audio_features(
+    audio_features: torch.Tensor, target_length: int
+) -> torch.Tensor:
+    """
+    Pads or truncates audio features (log-mel spectrogram or MFCC) to a fixed length (target_length).
+
+    Args:
+        audio_features (torch.Tensor): The audio feature tensor (C, F, T) where C is the number of channels,
+                                       F is the number of mel-frequency bins (or MFCC coefficients),
+                                       and T is the time dimension (number of frames).
+        target_length (int): The target number of time frames for the output audio features.
+
+    Returns:
+        torch.Tensor: The padded or truncated audio feature tensor with shape (C, F, target_length).
+    """
+    current_length = audio_features.size(-1)
+
+    if current_length < target_length:
+        padding = target_length - current_length
+        audio_features = torch.nn.functional.pad(
+            audio_features, (0, padding), "constant", 0
+        )
+    elif current_length > target_length:
+        audio_features = audio_features[..., :target_length]
+
+    return audio_features
+
+
+def convert_stereo_to_mono(waveform: torch.Tensor) -> torch.Tensor:
+    """
+    Converts stereo waveform to mono by averaging the two channels.
+
+    Args:
+        waveform (torch.Tensor): The mono waveform tensor, shape (2, ...), where 2 is the number of channels.
+
+    Returns:
+        torch.Tensor: The stereo waveform tensor, shape (1, ...), where 1 is the number of channels.
+    """
+    if waveform.size(0) == 2:
+        waveform = waveform.mean(dim=0, keepdim=True)
+        return waveform
+    else:
+        return waveform
 
 
 def augment_audio(

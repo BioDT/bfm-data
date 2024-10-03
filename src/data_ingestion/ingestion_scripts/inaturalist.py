@@ -4,7 +4,6 @@ import csv
 import json
 import os
 import shutil
-from collections import defaultdict
 from pathlib import Path
 
 from src.config.paths import DATA_DIR
@@ -141,3 +140,6 @@ class iNaturalistDownloaderFromFile:
                     shutil.move(file_path, os.path.join(species_dir, file_name))
 
         print("Images have been successfully moved.")
+
+
+# TODO: Create run function

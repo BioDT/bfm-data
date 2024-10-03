@@ -5,7 +5,7 @@ import time
 
 import pycountry
 
-from src.config.paths import ONLY_IMGS_PATHS
+from src.config.paths import DATA_DIR, ONLY_IMGS_PATHS
 from src.data_ingestion.api_clients.downloader import Downloader
 from src.utils.merge_data import extract_species_names
 
@@ -187,3 +187,16 @@ class BOLDDownloader(Downloader):
                 )
         else:
             self.download()
+
+
+def bold(txt: bool = False, scientific_name: str = None, name: bool = False):
+    """
+    Run the BOLDDownloader for barcode of life data.
+
+    Args:
+        txt (bool): If True, download species based on text file paths.
+        scientific_name (str): The scientific name of the species to download.
+        name (bool): If True, download species based on the provided `scientific_name`.
+    """
+    bold_downloader = BOLDDownloader(DATA_DIR)
+    bold_downloader.run(txt=txt, scientific_name=scientific_name, name=name)

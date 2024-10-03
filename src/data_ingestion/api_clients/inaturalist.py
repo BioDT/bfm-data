@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Tuple
 import aiohttp
 from cachetools import TTLCache
 
+from src.config.paths import DATA_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
 
 
@@ -329,3 +330,11 @@ class iNaturalistDownloader(Downloader):
     async def run(self):
         async with aiohttp.ClientSession() as session:
             await self.fetch_observations(session, start_page=1)
+
+
+def inaturalist():
+    """
+    Function to initialize iNaturalistDownloader and start the observation download process.
+    """
+    downloader = iNaturalistDownloader(DATA_DIR)
+    asyncio.run(downloader.run())

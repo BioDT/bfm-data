@@ -1,17 +1,17 @@
-# src/data_preprocessing/batch.py
+# src/dataset_creation/batch.py
 
 from dataclasses import dataclass
 from typing import Callable, Dict, Tuple
 
 import torch
 
-from src.data_preprocessing.metadata import BatchMetadata
 from src.data_preprocessing.transformation.era5 import (
     normalise_atmospheric_variables,
     normalise_surface_variable,
     unnormalise_atmospheric_variables,
     unnormalise_surface_variables,
 )
+from src.dataset_creation.metadata import BatchMetadata
 
 
 @dataclass
@@ -29,17 +29,7 @@ class DataBatch:
     surface_variables: Dict[str, torch.Tensor]
     single_variables: Dict[str, torch.Tensor]
     atmospheric_variables: Dict[str, torch.Tensor]
-    image_variables: Dict[str, torch.Tensor]
-    audio_variables: Dict[str, torch.Tensor]
-    edna_variables: Dict[str, torch.Tensor]
-    species_names: torch.Tensor
-    phylum: torch.Tensor
-    class_: torch.Tensor
-    order: torch.Tensor
-    family: torch.Tensor
-    genus: torch.Tensor
-    description: torch.Tensor
-    redlist: torch.Tensor
+    species_variables: Dict[str, torch.Tensor]
     batch_metadata: BatchMetadata
 
     @property
@@ -72,16 +62,20 @@ class DataBatch:
         atmospheric_variables = {
             key: f(value) for key, value in self.atmospheric_variables.items()
         }
+        species_variables = {
+            key: f(value) for key, value in self.species_variables.items()
+        }
 
         return DataBatch(
             surface_variables=surface_variables,
             single_variables=single_variables,
             atmospheric_variables=atmospheric_variables,
+            species_variables=species_variables,
             batch_metadata=BatchMetadata(
-                era5_latitude=f(self.batch_metadata.era5_latitude),
-                era5_longitude=f(self.batch_metadata.era5_longitude),
+                latitudes=f(self.batch_metadata.latitudes),
+                longitudes=f(self.batch_metadata.longitudes),
                 pressure_levels=self.batch_metadata.pressure_levels,
-                era5_timestamp=self.batch_metadata.era5_timestamp,
+                timestamp=self.batch_metadata.timestamp,
                 prediction_step=self.batch_metadata.prediction_step,
             ),
         )
@@ -110,30 +104,30 @@ class DataBatch:
         """
         return self._fmap(lambda x: x.type(t))
 
-    def normalize_data(
-        self, surface_stats: dict[str, tuple[float, float]]
-    ) -> "DataBatch":
+    def normalize_data(self, locations, scales) -> "DataBatch":
         """
         Normalise all variables in the batch.
 
         Args:
-            surface_stats (dict[str, tuple[float, float]]): For these surface-level variables, adjust
-                the normalisation to the given tuple consisting of a new location and scale.
+            locations (Dict[str, float]): A dictionary where the key is the variable name
+                                    and the value is the mean for that variable.
+            scales (Dict[str, float]): A dictionary where the key is the variable name
+                                        and the value is the standard deviation for that variable.
 
         Returns:
             DataBatch: A new batch with all variables normalized.
         """
         normalized_surface_variables = {
-            key: normalise_surface_variable(value, key, stats=surface_stats)
+            key: normalise_surface_variable(value, key, locations, scales)
             for key, value in self.surface_variables.items()
         }
         normalized_single_variables = {
-            key: normalise_surface_variable(value, key, stats=surface_stats)
+            key: normalise_surface_variable(value, key, locations, scales)
             for key, value in self.single_variables.items()
         }
         normalized_atmospheric_variables = {
             key: normalise_atmospheric_variables(
-                value, key, self.batch_metadata.pressure_levels
+                value, key, self.batch_metadata.pressure_levels, locations, scales
             )
             for key, value in self.atmospheric_variables.items()
         }
@@ -145,31 +139,30 @@ class DataBatch:
             batch_metadata=self.batch_metadata,
         )
 
-    def unnormalise_data(
-        self, surface_stats: dict[str, tuple[float, float]]
-    ) -> "DataBatch":
+    def unnormalise_data(self, locations, scales) -> "DataBatch":
         """
         Unnormalise all variables in the batch.
 
         Args:
-            surface_stats (dict[str, tuple[float, float]]): For these surface-level variables, adjust
-                the normalisation to the given tuple consisting of a new location and scale.
-
+            locations (Dict[str, float]): A dictionary where the key is the variable name
+                                    and the value is the mean for that variable.
+            scales (Dict[str, float]): A dictionary where the key is the variable name
+                                        and the value is the standard deviation for that variable.
 
         Returns:
             DataBatch: A new batch with all variables unnormalized.
         """
         unnormalized_surface_variables = {
-            key: unnormalise_surface_variables(value, key, stats=surface_stats)
+            key: unnormalise_surface_variables(value, key, locations, scales)
             for key, value in self.surface_variables.items()
         }
         unnormalized_single_variables = {
-            key: unnormalise_surface_variables(value, key, stats=surface_stats)
+            key: unnormalise_surface_variables(value, key, locations, scales)
             for key, value in self.single_variables.items()
         }
         unnormalized_atmospheric_variables = {
             key: unnormalise_atmospheric_variables(
-                value, key, self.batch_metadata.pressure_levels
+                value, key, self.batch_metadata.pressure_levels, locations, scales
             )
             for key, value in self.atmospheric_variables.items()
         }
@@ -186,7 +179,7 @@ class DataBatch:
         Crop the variables in the batch to the specified patch size.
 
         Args:
-            patch_size (int): The target patch size to crop the data to.
+            patch_size (int): The target patch size to crop the data to. Default is 4.
 
         Returns:
             Batch: A new batch with variables cropped to the specified patch size.
@@ -216,11 +209,15 @@ class DataBatch:
                 key: value[..., :-1, :]
                 for key, value in self.atmospheric_variables.items()
             }
+            cropped_species = {
+                key: value[..., :-1, :] for key, value in self.species_variables.items()
+            }
 
             return DataBatch(
                 surface_variables=cropped_surface,
                 static_variables=cropped_static,
                 atmospheric_variables=cropped_atmospheric,
+                species_variables=cropped_species,
                 batch_metadata=self.batch_metadata,
             )
         else:

@@ -583,9 +583,12 @@ files = [
 [package.dependencies]
 click = ">=8.1"
 cloudpickle = ">=3.0.0"
+dask-expr = {version = ">=1.1,<1.2", optional = true, markers = "extra == \"dataframe\""}
 fsspec = ">=2021.09.0"
 importlib-metadata = {version = ">=4.13.0", markers = "python_version < \"3.12\""}
+numpy = {version = ">=1.24", optional = true, markers = "extra == \"array\""}
 packaging = ">=20.0"
+pandas = {version = ">=2.0", optional = true, markers = "extra == \"dataframe\""}
 partd = ">=1.4.0"
 pyyaml = ">=5.3.1"
 toolz = ">=0.10.0"
@@ -597,6 +600,25 @@ dataframe = ["dask-expr (>=1.1,<1.2)", "dask[array]", "pandas (>=2.0)"]
 diagnostics = ["bokeh (>=3.1.0)", "jinja2 (>=2.10.3)"]
 distributed = ["distributed (==2024.9.0)"]
 test = ["pandas[test]", "pre-commit", "pytest", "pytest-cov", "pytest-rerunfailures", "pytest-timeout", "pytest-xdist"]
+
+[[package]]
+name = "dask-expr"
+version = "1.1.14"
+description = "High Level Expressions for Dask"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "dask_expr-1.1.14-py3-none-any.whl", hash = "sha256:86a59c51a84d88b6a653f5b4e2c578213a349a963206dcd29219e4826560ada2"},
+    {file = "dask_expr-1.1.14.tar.gz", hash = "sha256:c67c0c190d933e253f85674da71615f23ed8ba08f3abcc0cd160080643feb40a"},
+]
+
+[package.dependencies]
+dask = "2024.9.0"
+pandas = ">=2"
+pyarrow = ">=14.0.1"
+
+[package.extras]
+analyze = ["crick", "distributed"]
 
 [[package]]
 name = "decorator"
@@ -3543,4 +3565,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "f9aba8a212f69f041b4fd47ee1ecd6e9640223f7e737821d98b12b0a40a18c6b"
+content-hash = "1321805a542e15b9cb344046d53eaae6b7bbe176158291c24cf3857dfaa32fd5"

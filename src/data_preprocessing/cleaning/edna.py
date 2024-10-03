@@ -26,8 +26,11 @@ def replace_ambiguous_bases(sequence: str, threshold: float = 0.05) -> str:
         threshold (float): Proportion of ambiguous bases allowed.
 
     Returns:
-        str: Sequence with ambiguous bases replaced.
+        str: Sequence with ambiguous bases replaced, or None if the threshold is exceeded.
     """
+    if not sequence:
+        return None
+
     ambiguous_bases = {"N": "A", "Y": "C", "R": "G", "W": "A", "S": "C"}
     total_length = len(sequence)
     ambiguous_count = sum(sequence.count(base) for base in ambiguous_bases.keys())

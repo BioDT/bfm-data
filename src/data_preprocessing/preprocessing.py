@@ -1,12 +1,9 @@
 # src/data_preprocessing/preprocess.py
 
-import torch
+
 import torchaudio
-import torchvision.transforms as transforms
-import xarray
 from PIL import Image
 
-from src.data_preprocessing.batch import DataBatch
 from src.data_preprocessing.cleaning.audio import reduce_noise, remove_silence
 from src.data_preprocessing.cleaning.edna import clean_sequence, replace_ambiguous_bases
 from src.data_preprocessing.cleaning.image import (
@@ -22,14 +19,16 @@ from src.data_preprocessing.feature_extraction.image import (
     extract_hog_features,
 )
 from src.data_preprocessing.feature_extraction.text import extract_tfidf_features
-from src.data_preprocessing.metadata import BatchMetadata
 from src.data_preprocessing.transformation.audio import (
     augment_audio,
+    convert_stereo_to_mono,
+    convert_to_log_mel_spectrogram,
     convert_to_spectrogram,
     normalise_audio,
     resample_audio,
 )
 from src.data_preprocessing.transformation.edna import (
+    normalize_kmer_vector,
     one_hot_encode_sequence,
     vectorize_kmer_frequencies,
 )
@@ -39,12 +38,16 @@ from src.data_preprocessing.transformation.image import (
     equalize_histogram,
     normalise_image,
 )
-from src.data_preprocessing.transformation.text import bert_tokenizer
+from src.data_preprocessing.transformation.text import (
+    bert_tokenizer,
+    pad_or_truncate_embeddings,
+    reduce_embedding_dimensions,
+)
 
 
 def preprocess_image(
     image_path: str,
-    resize_size: tuple = (224, 224),
+    resize_size: tuple = (64, 64),
     crop: bool = False,
     denoise: bool = False,
     blur: bool = False,
@@ -101,7 +104,7 @@ def preprocess_image(
         processed_image = convert_color_space(processed_image, color_space)
 
     if normalize:
-        image_tensor = normalise_image(processed_image, mean, std)
+        normalised_image = normalise_image(processed_image, mean, std)
 
     hog_feature_vector = None
     hog_image = None
@@ -115,7 +118,7 @@ def preprocess_image(
 
     return {
         "processed_image": processed_image,
-        "image_tensor": image_tensor if normalize else None,
+        "normalised_image": normalised_image if normalize else None,
         "color_histogram": color_histogram,
         "hog_feature_vector": hog_feature_vector,
         "hog_image": hog_image,
@@ -137,9 +140,10 @@ def preprocess_audio(
     shift_factor: float = 0.2,
     speed_factor: float = 1.2,
     normalize: bool = False,
-    mfcc: bool = True,
+    mfcc: bool = False,
     n_mfcc: int = 13,
     convert_spectrogram: bool = False,
+    convert_log_mel_spectrogram: bool = False,
 ) -> dict:
     """
     A general preprocessing pipeline for audio that handles silence removal, noise reduction, resampling,
@@ -163,6 +167,7 @@ def preprocess_audio(
         mfcc (bool): If True, extract MFCC features.
         n_mfcc (int): The number of MFCC features to extract.
         convert_spectrogram (bool): If True, convert the audio to a spectrogram.
+        convert_log_mel_spectrogram (bool): If True, convert the audio to a log mel spectrogram.
 
     Returns:
         dict: A dictionary containing processed audio waveform and extracted features.
@@ -173,6 +178,8 @@ def preprocess_audio(
     if resample and original_sample_rate != target_sample_rate:
         waveform = resample_audio(waveform, original_sample_rate, target_sample_rate)
         sample_rate = target_sample_rate
+
+    waveform = convert_stereo_to_mono(waveform)
 
     if rem_silence:
         waveform = remove_silence(
@@ -198,10 +205,15 @@ def preprocess_audio(
     if convert_spectrogram:
         spectrogram = convert_to_spectrogram(waveform)
 
+    log_mel_spectrogram = None
+    if convert_log_mel_spectrogram:
+        log_mel_spectrogram = convert_to_log_mel_spectrogram(waveform, sample_rate)
+
     return {
         "waveform": waveform,
         "mfcc_features": mfcc_features,
         "spectrogram": spectrogram,
+        "log_mel_spectrogram": log_mel_spectrogram,
     }
 
 
@@ -215,6 +227,7 @@ def preprocess_edna(
     one_hot_encode: bool = False,
     max_length: int = 512,
     vectorize_kmers: bool = False,
+    normalise: bool = False,
     vocab_size: int = None,
 ) -> dict:
     """
@@ -231,6 +244,7 @@ def preprocess_edna(
         one_hot_encode (bool): If True, one-hot encode the sequence.
         max_length (int): Maximum length for one-hot encoding.
         vectorize_kmers (bool): If True, vectorize k-mer frequencies.
+        normalise (bool): If True, normalise the sequence.
         vocab_size (int): The size of the k-mer vocabulary for vectorization. If None, inferred from k.
 
     Returns:
@@ -258,11 +272,16 @@ def preprocess_edna(
     if vectorize_kmers and kmer_frequencies is not None:
         kmer_vector = vectorize_kmer_frequencies(kmer_frequencies, k, vocab_size)
 
+    normalised_vector = None
+    if normalise and kmer_vector is not None:
+        normalised_vector = normalize_kmer_vector(kmer_vector)
+
     return {
         "cleaned_sequence": edna_sequence,
         "kmer_frequencies": kmer_frequencies,
         "one_hot_encoded_sequence": one_hot_encoded_sequence,
         "kmer_vector": kmer_vector,
+        "normalised_vector": normalised_vector,
     }
 
 
@@ -298,6 +317,10 @@ def preprocess_text(
     bert_embeddings = None
     if use_bert:
         bert_embeddings = bert_tokenizer(corpus, max_length)
+
+    padded_embeddings = pad_or_truncate_embeddings(bert_embeddings, 64)
+
+    bert_embeddings = reduce_embedding_dimensions(padded_embeddings, output_dim=64)
 
     return {
         "tfidf_features": tfidf_features,

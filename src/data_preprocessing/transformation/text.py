@@ -3,6 +3,7 @@
 import warnings
 
 import torch
+from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 from transformers import BertModel, BertTokenizer
 
@@ -71,3 +72,46 @@ def bert_tokenizer(
     bert_embeddings = torch.cat(bert_embeddings).cpu()
 
     return bert_embeddings
+
+
+def pad_or_truncate_embeddings(
+    embeddings: torch.Tensor, target_length: int
+) -> torch.Tensor:
+    """
+    Pads or truncates BERT embeddings to a fixed length (target_length).
+
+    Args:
+        embeddings (torch.Tensor): The BERT embeddings tensor of shape (N, 768), where N is the number of texts.
+        target_length (int): The target length (number of texts) to pad or truncate the embeddings to.
+
+    Returns:
+        torch.Tensor: The padded or truncated embeddings tensor of shape (target_length, 768).
+    """
+    current_length = embeddings.size(0)
+
+    if current_length < target_length:
+        padding_size = target_length - current_length
+        padding = torch.zeros(padding_size, embeddings.size(1))
+        embeddings = torch.cat([embeddings, padding], dim=0)
+    elif current_length > target_length:
+        embeddings = embeddings[:target_length]
+
+    return embeddings
+
+
+def reduce_embedding_dimensions(
+    embeddings: torch.Tensor, output_dim: int = 128
+) -> torch.Tensor:
+    """
+    Reduces the dimensionality of BERT embeddings using PCA.
+
+    Args:
+        embeddings (torch.Tensor): The BERT embeddings tensor of shape (N, 768).
+        output_dim (int): The target dimensionality for the embeddings (default is 128).
+
+    Returns:
+        torch.Tensor: The dimensionality-reduced embeddings tensor of shape (N, output_dim).
+    """
+    pca = PCA(n_components=output_dim)
+    reduced_embeddings = pca.fit_transform(embeddings.cpu().numpy())
+    return torch.tensor(reduced_embeddings)

@@ -9,7 +9,7 @@ import requests
 import torchaudio
 import torchaudio.transforms as T
 
-from src.config.paths import TEST_DATA_DIR
+from src.config import paths
 from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
 from src.utils.handle_values import parse_date_time
 
@@ -153,7 +153,7 @@ class XenoCantoDownloaderFromFile:
             waveform, sample_rate = torchaudio.load(temp_file_path)
             os.remove(temp_file_path)
 
-            xeno_canto_downloader = XenoCantoDownloader(TEST_DATA_DIR)
+            xeno_canto_downloader = XenoCantoDownloader(paths.TEST_DATA_DIR)
 
             if sample_rate != xeno_canto_downloader.AUDIO_SAMPLE_RATE:
                 resampler = T.Resample(
@@ -313,4 +313,45 @@ class XenoCantoDownloaderFromFile:
                     print(f"No audio URL found for {scientific_name}")
 
 
-# TODO: Create run function
+def xenocanto(
+    download: bool = False,
+    move_sounds: bool = False,
+    organize_unknown: bool = False,
+    scientific_names: list = None,
+    max_audios: int = 5,
+):
+    """
+    Function to run the XenoCantoDownloader based on user choices.
+
+    Args:
+        download (bool): If True, download bird audio files.
+        move_sounds (bool): If True, move sounds into appropriate folders.
+        process_metadata (bool): If True, process and save metadata.
+        organize_unknown (bool): If True, move unknown files to a designated folder.
+        scientific_names (list): A list of scientific names to process (only used when download is True).
+        max_audios (int): Maximum number of audios to download per species (used if download is True).
+
+    """
+    xenocanto_downloader = XenoCantoDownloaderFromFile(
+        data_dir=paths.XENO_CANTO_DIR,
+        text_file=paths.XENO_CANTO_TXT,
+        processed_log_file=paths.XENO_CANTO_PROCESSED_LOG_FILE,
+    )
+
+    if download:
+        if scientific_names:
+            xenocanto_downloader.process_scientific_names_from_list(
+                scientific_names, max_audios_per_species=max_audios
+            )
+        else:
+            xenocanto_downloader.download_and_process()
+
+    if move_sounds:
+        xenocanto_downloader.move_sounds(
+            source_dir=paths.XENO_CANTO_DIR, destination_dir=paths.DATA_DIR
+        )
+
+    if organize_unknown:
+        xenocanto_downloader.uknown_files()
+
+    print("XenoCanto operation completed.")

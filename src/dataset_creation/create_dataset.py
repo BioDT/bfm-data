@@ -35,7 +35,6 @@ from src.dataset_creation.save_data import (
     save_as_parquet,
     save_batch_metadata_to_parquet,
 )
-from src.monitoring_logging.monitoring.memory import monitor_memory_usage
 from src.utils.merge_data import (
     extract_metadata_from_csv,
     folder_has_all_modalities,
@@ -256,24 +255,26 @@ def create_batch(
     Returns:
         DataBatch: A DataBatch object containing both climate and species data for the given day.
     """
-    T = len(dates)
-    batch_size = 1
 
     locations, scales = get_mean_standard_deviation(
         surface_dataset, single_dataset, atmospheric_dataset
+    )
+
+    pressure_levels = tuple(
+        int(level) for level in atmospheric_dataset.pressure_level.values
     )
 
     for t, current_date in enumerate(dates):
 
         try:
             surface_variables_by_day = surface_dataset.sel(
-                valid_time=current_date[0]
+                valid_time=current_date[0], method="nearest"
             ).load()
             single_variables_by_day = single_dataset.sel(
-                valid_time=current_date[0]
+                valid_time=current_date[0], method="nearest"
             ).load()
             atmospheric_variables_by_day = atmospheric_dataset.sel(
-                valid_time=current_date[0]
+                valid_time=current_date[0], method="nearest"
             ).load()
             pressure_levels = tuple(
                 int(level) for level in atmospheric_dataset.pressure_level.values
@@ -289,69 +290,35 @@ def create_batch(
                 for lon_idx, lon in enumerate(lon_range):
 
                     for var_name in ["t2m", "msl", "u10", "v10"]:
-                        try:
-                            var_value = (
-                                surface_variables_by_day[var_name]
-                                .sel(latitude=lat, longitude=lon)
-                                .values
-                            )
-                            surfaces_variables[var_name][
-                                0, t, lat_idx, lon_idx
-                            ] = torch.tensor(var_value)
-                        except KeyError:
-                            surfaces_variables[var_name][
-                                0, t, lat_idx, lon_idx
-                            ] = float("nan")
+                        var_value = (
+                            surface_variables_by_day[var_name]
+                            .sel(latitude=lat, longitude=lon, method="nearest")
+                            .values
+                        )
+                        surfaces_variables[var_name][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(var_value.item())
 
                     for var_name in ["z", "lsm", "slt"]:
-                        try:
-                            var_value = (
-                                single_variables_by_day[var_name]
-                                .sel(latitude=lat, longitude=lon)
-                                .values
-                            )
-                            single_variables[var_name][
-                                0, t, lat_idx, lon_idx
-                            ] = torch.tensor(var_value)
-                        except KeyError:
-                            single_variables[var_name][0, t, lat_idx, lon_idx] = float(
-                                "nan"
-                            )
+                        var_value = (
+                            single_variables_by_day[var_name]
+                            .sel(latitude=lat, longitude=lon, method="nearest")
+                            .values
+                        )
+                        single_variables[var_name][t, lat_idx, lon_idx] = torch.tensor(
+                            var_value.item()
+                        )
 
                     for var_name in ["z", "t", "u", "v", "q"]:
-                        try:
-                            var_value = (
-                                atmospheric_variables_by_day[var_name]
-                                .sel(latitude=lat, longitude=lon)
-                                .values
-                            )
-                            if var_value.ndim == 1 and len(var_value) == 13:
-                                atmospheric_variables[var_name][
-                                    0, t, :, lat_idx, lon_idx
-                                ] = torch.tensor(var_value)
-                            else:
-                                atmospheric_variables[var_name][
-                                    0, t, :, lat_idx, lon_idx
-                                ] = float("nan")
-                        except KeyError:
+                        var_value = (
+                            atmospheric_variables_by_day[var_name]
+                            .sel(latitude=lat, longitude=lon, method="nearest")
+                            .values
+                        )
+                        if var_name not in atmospheric_variables:
                             atmospheric_variables[var_name][
-                                0, t, :, lat_idx, lon_idx
-                            ] = float("nan")
-        else:
-            nan_tensor = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-
-            for var_name in surfaces_variables.keys():
-                surfaces_variables[var_name] = nan_tensor.clone()
-
-            for var_name in single_variables.keys():
-                single_variables[var_name] = nan_tensor.clone()
-
-            for var_name in atmospheric_variables.keys():
-                atmospheric_variables[var_name] = nan_tensor.clone()
+                                t, lat_idx, lon_idx
+                            ] = torch.tensor(var_value.item())
 
         try:
             species_variables_by_day = species_dataset[
@@ -372,142 +339,43 @@ def create_batch(
                         (species_variables_by_day["Latitude"] == lat)
                         & (species_variables_by_day["Longitude"] == lon)
                     ]
+
                     if not species_at_location.empty:
+                        species_entry = species_at_location.iloc[0]
+
                         species_variables["Species"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Species"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Image"][
-                            0, t, lat_idx, lon_idx
-                        ] = species_at_location["Image"].iloc[0]
-                        species_variables["Audio"][
-                            0, t, lat_idx, lon_idx
-                        ] = species_at_location["Audio"].iloc[0]
-                        species_variables["eDNA"][
-                            0, t, lat_idx, lon_idx
-                        ] = species_at_location["eDNA"].iloc[0]
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(species_entry["Species"], dtype=torch.float16)
+
+                        species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
+                            "Image"
+                        ]
+
+                        species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
+                            "Audio"
+                        ]
+
+                        species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
+                            "eDNA"
+                        ]
+
                         species_variables["Description"][
-                            0, t, lat_idx, lon_idx
-                        ] = species_at_location["Description"].iloc[0]
-                        species_variables["Phylum"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Phylum"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Class"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Class"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Order"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Order"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Family"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Family"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Genus"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Genus"].iloc[0], dtype=torch.float32
-                        )
-                        species_variables["Redlist"][
-                            0, t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_at_location["Redlist"].iloc[0], dtype=torch.float32
-                        )
-                    else:
-                        species_variables["Species"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Image"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Audio"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["eDNA"][0, t, lat_idx, lon_idx] = float("nan")
-                        species_variables["Description"][
-                            0, t, lat_idx, lon_idx
-                        ] = float("nan")
-                        species_variables["Phylum"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Class"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Order"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Family"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Genus"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-                        species_variables["Redlist"][0, t, lat_idx, lon_idx] = float(
-                            "nan"
-                        )
-        else:
-            species_variables["Species"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Image"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Audio"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["eDNA"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Description"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Phylum"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Class"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Order"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Family"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Genus"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
-            species_variables["Redlist"] = torch.full(
-                (batch_size, T, len(lat_range), len(lon_range)),
-                float("nan"),
-                dtype=torch.float32,
-            )
+                            t, lat_idx, lon_idx
+                        ] = species_entry["Description"]
+
+                        for category in [
+                            "Phylum",
+                            "Class",
+                            "Order",
+                            "Family",
+                            "Genus",
+                            "Redlist",
+                        ]:
+                            species_variables[category][
+                                t, lat_idx, lon_idx
+                            ] = torch.tensor(
+                                species_entry[category], dtype=torch.float16
+                            )
 
     first_timestamp, *_ = dates[0]
 
@@ -560,18 +428,20 @@ def create_batches(
 
     def initialize_data():
         """Initialize common ranges, tensors, and return them."""
-        lat_range = surface_dataset.latitude.values
-        lon_range = surface_dataset.longitude.values
+
+        lat_ = species_dataset[["Latitude"]].drop_duplicates()
+        lon_ = species_dataset[["Longitude"]].drop_duplicates()
+
+        lat_range = lat_["Latitude"].values
+        lon_range = lon_["Longitude"].values
+
         T = 2
-        batch_size = 1
         pressure_levels = 13
 
         climate_tensors = initialize_climate_tensors(
-            lat_range, lon_range, T, batch_size, pressure_levels
+            lat_range, lon_range, T, pressure_levels
         )
-        species_tensors = initialize_species_tensors(
-            lat_range, lon_range, T, batch_size
-        )
+        species_tensors = initialize_species_tensors(lat_range, lon_range, T)
 
         return lat_range, lon_range, climate_tensors, species_tensors
 
@@ -590,7 +460,7 @@ def create_batches(
 
         if os.path.exists(batch_file):
             print(f"Batch for {date1} to {date2} already exists. Skipping...")
-            return False
+            return None
 
         batch = create_batch(
             dates=timestamps,
@@ -608,14 +478,15 @@ def create_batches(
 
         os.makedirs(os.path.dirname(batch_file), exist_ok=True)
         torch.save(batch, batch_file)
-        del batch
-        return True
+        return batch
 
     lat_range, lon_range, climate_tensors, species_tensors = initialize_data()
     surfaces_variables = climate_tensors["surface"]
     single_variables = climate_tensors["single"]
     atmospheric_variables = climate_tensors["atmospheric"]
     species_variables = species_tensors
+
+    batches = []
 
     if load_type == "day-by-day":
         climate_timestamps = set(
@@ -641,13 +512,16 @@ def create_batches(
 
         timestamps = merge_timestamps(surface_dataset, species_subset)
 
-        create_and_save_batch(
+        batch = create_and_save_batch(
             timestamps[:2],
             surfaces_variables,
             single_variables,
             atmospheric_variables,
             species_variables,
         )
+
+        if batch is not None:
+            return batch
 
     elif load_type == "large-file":
         timestamps = merge_timestamps(surface_dataset, species_dataset)
@@ -660,22 +534,23 @@ def create_batches(
                 & (species_dataset["Timestamp"] < timestamp_pair[1])
             ]
 
-            if (
-                create_and_save_batch(
-                    timestamp_pair,
-                    surfaces_variables,
-                    single_variables,
-                    atmospheric_variables,
-                    species_variables,
-                )
-                is False
-            ):
-                continue
+            batch = create_and_save_batch(
+                timestamp_pair,
+                surfaces_variables,
+                single_variables,
+                atmospheric_variables,
+                species_variables,
+            )
+
+            if batch is not None:
+                batches.append(batch)
 
             reset_climate_tensors(
                 surfaces_variables, single_variables, atmospheric_variables
             )
             reset_species_tensors(species_variables)
+
+        return batches
 
 
 def create_dataset(
@@ -704,9 +579,9 @@ def create_dataset(
         None.
     """
     species_dataset = load_species_data(species_file)
-    batches = []
 
     if load_type == "day-by-day":
+        batches = []
 
         grouped_files = load_era5_files_grouped_by_date(era5_directory)
 
@@ -740,14 +615,15 @@ def create_dataset(
                 [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
             )
 
-            day_batches = create_batches(
+            batch = create_batches(
                 surface_dataset=surface_dataset,
                 single_dataset=single_dataset,
                 atmospheric_dataset=atmospheric_dataset,
                 species_dataset=species_dataset,
             )
 
-            batches.extend(day_batches)
+            if batch is not None:
+                batches.append(batch)
 
             atmospheric_dataset_day1.close()
             single_dataset_day1.close()
@@ -771,4 +647,4 @@ def create_dataset(
             species_dataset=species_dataset,
         )
 
-    save_batch_metadata_to_parquet(batches, batch_metadata_file)
+        save_batch_metadata_to_parquet(batches, batch_metadata_file)

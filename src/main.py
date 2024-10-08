@@ -7,7 +7,7 @@ from src.data_ingestion.api_clients.era5 import era5
 from src.data_ingestion.api_clients.inaturalist import inaturalist
 from src.data_ingestion.api_clients.mapoflife import mop
 from src.data_ingestion.api_clients.xenocanto import xeno_canto
-from src.dataset_creation.create_dataset import create_dataset
+from src.dataset_creation.create_dataset import create_dataset, create_species_dataset
 
 
 def run_era5(args):

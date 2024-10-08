@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.data_preprocessing.transformation.text import label_encode
 from src.dataset_creation.batch import DataBatch
+from src.dataset_creation.load_data import load_species_data
 
 
 def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame:
@@ -27,12 +28,6 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
     Returns:
         pd.DataFrame: The preprocessed and normalized dataset with tensors and label-encoded categories.
     """
-    scaler = StandardScaler()
-
-    if "Latitude" in dataset.columns and "Longitude" in dataset.columns:
-        dataset[["Latitude", "Longitude"]] = scaler.fit_transform(
-            dataset[["Latitude", "Longitude"]].fillna(0)
-        )
 
     if "Timestamp" in dataset.columns:
         dataset["Timestamp"] = pd.to_datetime(
@@ -61,10 +56,10 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
     dataset["Redlist"] = label_encode(dataset, "Redlist")
 
     dataset["Latitude"] = dataset["Latitude"].apply(
-        lambda lat: round_to_nearest_grid(lat)
+        lambda lat: round_to_nearest_grid(lat) if pd.notnull(lat) else np.nan
     )
     dataset["Longitude"] = dataset["Longitude"].apply(
-        lambda lon: round_to_nearest_grid(lon)
+        lambda lon: round_to_nearest_grid(lon) if pd.notnull(lon) else np.nan
     )
 
     dataset["Image"] = dataset["Image"].apply(
@@ -81,10 +76,10 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
         lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
     )
     dataset["Latitude"] = dataset["Latitude"].apply(
-        lambda x: torch.tensor(x, dtype=torch.float64)
+        lambda x: torch.tensor(x, dtype=torch.float16)
     )
     dataset["Longitude"] = dataset["Longitude"].apply(
-        lambda x: torch.tensor(x, dtype=torch.float64)
+        lambda x: torch.tensor(x, dtype=torch.float16)
     )
 
     return dataset
@@ -171,7 +166,6 @@ def initialize_climate_tensors(
     lat_range: np.ndarray,
     lon_range: np.ndarray,
     T: int,
-    batch_size: int,
     pressure_levels: int = 13,
 ) -> Dict[str, torch.Tensor]:
     """
@@ -181,7 +175,6 @@ def initialize_climate_tensors(
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
-        batch_size (int): Batch size for the tensors.
         pressure_levels (int): Number of pressure levels for atmospheric variables.
 
     Returns:
@@ -190,65 +183,46 @@ def initialize_climate_tensors(
 
     return {
         "surface": {
-            "t2m": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
-            "msl": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
-            "u10": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
-            "v10": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
+            "t2m": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "msl": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "u10": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "v10": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
         },
         "single": {
-            "z": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
-            "lsm": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
-            "slt": torch.zeros(
-                batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-            ),
+            "z": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "lsm": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "slt": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
         },
         "atmospheric": {
-            "z": torch.zeros(
-                batch_size,
+            "z": torch.empty(
                 T,
                 pressure_levels,
                 len(lat_range),
                 len(lon_range),
                 dtype=torch.float32,
             ),
-            "t": torch.zeros(
-                batch_size,
+            "t": torch.empty(
                 T,
                 pressure_levels,
                 len(lat_range),
                 len(lon_range),
                 dtype=torch.float32,
             ),
-            "u": torch.zeros(
-                batch_size,
+            "u": torch.empty(
                 T,
                 pressure_levels,
                 len(lat_range),
                 len(lon_range),
                 dtype=torch.float32,
             ),
-            "v": torch.zeros(
-                batch_size,
+            "v": torch.empty(
                 T,
                 pressure_levels,
                 len(lat_range),
                 len(lon_range),
                 dtype=torch.float32,
             ),
-            "q": torch.zeros(
-                batch_size,
+            "q": torch.empty(
                 T,
                 pressure_levels,
                 len(lat_range),
@@ -260,7 +234,7 @@ def initialize_climate_tensors(
 
 
 def initialize_species_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int, batch_size: int
+    lat_range: np.ndarray, lon_range: np.ndarray, T: int
 ) -> Dict[str, torch.Tensor]:
     """
     Create empty tensors for species data.
@@ -269,39 +243,22 @@ def initialize_species_tensors(
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
-        batch_size (int): Batch size for the tensors.
 
     Returns:
         Dict[str, torch.Tensor]: Dictionary of empty tensors for species data.
     """
     return {
-        "Species": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Image": torch.zeros(batch_size, T, len(lat_range), len(lon_range), 3, 64, 64),
-        "Audio": torch.zeros(batch_size, T, len(lat_range), len(lon_range), 1, 13, 1),
-        "Description": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), 1, 64, 64
-        ),
-        "eDNA": torch.zeros(batch_size, T, len(lat_range), len(lon_range), 256),
-        "Phylum": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Class": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Order": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Family": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Genus": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
-        "Redlist": torch.zeros(
-            batch_size, T, len(lat_range), len(lon_range), dtype=torch.float32
-        ),
+        "Species": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Image": torch.empty(T, len(lat_range), len(lon_range), 3, 64, 64),
+        "Audio": torch.empty(T, len(lat_range), len(lon_range), 1, 13, 1),
+        "Description": torch.empty(T, len(lat_range), len(lon_range), 1, 64, 64),
+        "eDNA": torch.empty(T, len(lat_range), len(lon_range), 256),
+        "Phylum": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Class": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Order": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Family": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Genus": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Redlist": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
     }
 
 
@@ -315,14 +272,14 @@ def reset_climate_tensors(surfaces_variables, single_variables, atmospheric_vari
         single_variables (dict): Dictionary of single-level variable tensors.
         atmospheric_variables (dict): Dictionary of atmospheric variable tensors.
     """
-    for var_name in surfaces_variables.keys():
-        surfaces_variables[var_name].fill_(0.0)
+    for var_name, tensor in surfaces_variables.items():
+        surfaces_variables[var_name] = torch.empty_like(tensor)
 
-    for var_name in single_variables.keys():
-        single_variables[var_name].fill_(0.0)
+    for var_name, tensor in single_variables.items():
+        single_variables[var_name] = torch.empty_like(tensor)
 
-    for var_name in atmospheric_variables.keys():
-        atmospheric_variables[var_name].fill_(0.0)
+    for var_name, tensor in atmospheric_variables.items():
+        atmospheric_variables[var_name] = torch.empty_like(tensor)
 
 
 def reset_species_tensors(species_variables):
@@ -335,10 +292,7 @@ def reset_species_tensors(species_variables):
         species_variables (dict): Dictionary of species-related tensors.
     """
     for var_name, tensor in species_variables.items():
-        if tensor.ndim > 2:
-            tensor.fill_(0.0)
-        else:
-            tensor.fill_(0.0)
+        species_variables[var_name] = torch.empty_like(tensor)
 
 
 def preprocess_era5(

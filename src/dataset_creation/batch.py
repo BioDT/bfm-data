@@ -21,7 +21,7 @@ class DataBatch:
 
     Args:
         surface_variables (Dict[str, torch.Tensor]): Dictionary of surface-level variables, where each tensor has shape `(b, t, h, w)`.
-        static_variables (Dict[str, torch.Tensor]): Dictionary of static variables, where each tensor has shape `(h, w)`.
+        single_variables (Dict[str, torch.Tensor]): Dictionary of single variables, where each tensor has shape `(h, w)`.
         atmospheric_variables (Dict[str, torch.Tensor]): Dictionary of atmospheric variables, where each tensor has shape `(b, t, c, h, w)`.
         batch_metadata (Metadata): Metadata associated with this batch, containing information such as latitudes, longitudes, and time.
     """
@@ -134,8 +134,9 @@ class DataBatch:
 
         return DataBatch(
             surface_variables=normalized_surface_variables,
-            static_variables=normalized_single_variables,
+            single_variables=normalized_single_variables,
             atmospheric_variables=normalized_atmospheric_variables,
+            species_variables=self.species_variables,
             batch_metadata=self.batch_metadata,
         )
 
@@ -169,7 +170,7 @@ class DataBatch:
 
         return DataBatch(
             surface_variables=unnormalized_surface_variables,
-            static_variables=unnormalized_single_variables,
+            single_variables=unnormalized_single_variables,
             atmospheric_variables=unnormalized_atmospheric_variables,
             batch_metadata=self.batch_metadata,
         )
@@ -215,7 +216,7 @@ class DataBatch:
 
             return DataBatch(
                 surface_variables=cropped_surface,
-                static_variables=cropped_static,
+                single_variables=cropped_static,
                 atmospheric_variables=cropped_atmospheric,
                 species_variables=cropped_species,
                 batch_metadata=self.batch_metadata,

@@ -9,6 +9,8 @@ import pandas as pd
 import torch
 import xarray as xr
 
+from src.dataset_creation.batch import DataBatch
+
 
 def load_era5_datasets(surface_file: str, single_file: str, atmospheric_dataset: str):
     """
@@ -142,31 +144,54 @@ def extract_timestamp(x):
     return None
 
 
-def load_and_inspect_batch(batch_file: str):
+def load_batches(batch_directory: str) -> list:
     """
-    Load a saved batch file and inspect its contents.
+    Load all saved DataBatch objects from the specified directory.
 
     Args:
-        batch_file (str): Path to the saved batch (.pt) file.
+        batch_directory (str): The directory where the batch .pt files are stored.
+
+    Returns:
+        list: A list of DataBatch objects loaded from the directory.
     """
-    batch = torch.load(batch_file)
+    batches = []
 
-    print("Batch Contents:")
-    for key, value in batch.items():
-        print(f"{key}: {type(value)}")
+    for batch_file in sorted(os.listdir(batch_directory)):
+        if batch_file.endswith(".pt"):
+            batch_path = os.path.join(batch_directory, batch_file)
+            print(f"Loading batch: {batch_path}")
 
-    if "surface" in batch:
-        print("\nSurface Variables Tensor:")
-        print(batch["surface"])
+            batch = torch.load(batch_path)
+            batches.append(batch)
 
-    if "single" in batch:
-        print("\nSingle Variables Tensor:")
-        print(batch["single"])
+    return batches
 
-    if "atmospheric" in batch:
-        print("\nAtmospheric Variables Tensor:")
-        print(batch["atmospheric"])
 
-    if "species" in batch:
-        print("\nSpecies Variables Tensor:")
-        print(batch["species"])
+def print_batch_variables(batch: DataBatch) -> None:
+    """
+    Print all the variable values from the given DataBatch.
+
+    Args:
+        batch (DataBatch): The batch object containing climate and species data.
+    """
+    print("Surface Variables:")
+    for var_name, var_data in batch.surface_variables.items():
+        print(f"{var_name}: {var_data}")
+
+    print("\nSingle Variables:")
+    for var_name, var_data in batch.single_variables.items():
+        print(f"{var_name}: {var_data}")
+
+    print("\nAtmospheric Variables:")
+    for var_name, var_data in batch.atmospheric_variables.items():
+        print(f"{var_name}: {var_data}")
+
+    print("\nSpecies Variables:")
+    for var_name, var_data in batch.species_variables.items():
+        print(f"{var_name}: {var_data}")
+
+    print("\nMetadata:")
+    print(f"Latitudes: {batch.batch_metadata.latitudes}")
+    print(f"Longitudes: {batch.batch_metadata.longitudes}")
+    print(f"Timestamps: {batch.batch_metadata.timestamp}")
+    print(f"Pressure Levels: {batch.batch_metadata.pressure_levels}")

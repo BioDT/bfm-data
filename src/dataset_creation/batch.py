@@ -175,45 +175,41 @@ class DataBatch:
             batch_metadata=self.batch_metadata,
         )
 
-    def crop(self, patch_size: int) -> "DataBatch":
+    def crop(self, patch_size: int, mode: str = "truncate") -> "DataBatch":
         """
-        Crop the variables in the batch to the specified patch size.
+        Crop or pad the variables in the batch to the specified patch size.
 
         Args:
-            patch_size (int): The target patch size to crop the data to. Default is 4.
+            patch_size (int): The target patch size to crop or pad the data to. Default is 4.
+            mode (str): The mode to adjust dimensions ('truncate' or 'pad'). Default is 'truncate'.
 
         Returns:
-            Batch: A new batch with variables cropped to the specified patch size.
+            DataBatch: A new batch with variables cropped or padded to the specified patch size.
 
         Raises:
-            ValueError: If the width of the data is not a multiple of the patch size.
-            ValueError: If more than one latitude is not divisible by the patch size.
+            ValueError: If invalid mode is provided.
         """
         height, width = self.spatial_dimensions
 
-        if width % patch_size != 0:
-            raise ValueError(
-                f"Data width ({width}) must be a multiple of the patch size ({patch_size})."
-            )
-
-        if height % patch_size == 0:
-            return self
-
-        elif height % patch_size == 1:
+        if mode == "truncate":
+            new_height = (height // patch_size) * patch_size
+            new_width = (width // patch_size) * patch_size
             cropped_surface = {
-                key: value[..., :-1, :] for key, value in self.surface_variables.items()
+                key: value[..., :new_height, :new_width]
+                for key, value in self.surface_variables.items()
             }
             cropped_static = {
-                key: value[:-1, :] for key, value in self.single_variables.items()
+                key: value[:new_height, :new_width]
+                for key, value in self.single_variables.items()
             }
             cropped_atmospheric = {
-                key: value[..., :-1, :]
+                key: value[..., :new_height, :new_width]
                 for key, value in self.atmospheric_variables.items()
             }
             cropped_species = {
-                key: value[..., :-1, :] for key, value in self.species_variables.items()
+                key: value[..., :new_height, :new_width]
+                for key, value in self.species_variables.items()
             }
-
             return DataBatch(
                 surface_variables=cropped_surface,
                 single_variables=cropped_static,
@@ -221,8 +217,38 @@ class DataBatch:
                 species_variables=cropped_species,
                 batch_metadata=self.batch_metadata,
             )
-        else:
-            excess_rows = height % patch_size
-            raise ValueError(
-                f"Expected at most one extra latitude row, but found {excess_rows}."
+
+        elif mode == "pad":
+            new_height = ((height + patch_size - 1) // patch_size) * patch_size
+            new_width = ((width + patch_size - 1) // patch_size) * patch_size
+            pad_height = new_height - height
+            pad_width = new_width - width
+            padding = (0, pad_width, 0, pad_height)
+
+            padded_surface = {
+                key: torch.nn.functional.pad(value, padding)
+                for key, value in self.surface_variables.items()
+            }
+            padded_static = {
+                key: torch.nn.functional.pad(value, padding)
+                for key, value in self.single_variables.items()
+            }
+            padded_atmospheric = {
+                key: torch.nn.functional.pad(value, padding)
+                for key, value in self.atmospheric_variables.items()
+            }
+            padded_species = {
+                key: torch.nn.functional.pad(value, padding)
+                for key, value in self.species_variables.items()
+            }
+
+            return DataBatch(
+                surface_variables=padded_surface,
+                single_variables=padded_static,
+                atmospheric_variables=padded_atmospheric,
+                species_variables=padded_species,
+                batch_metadata=self.batch_metadata,
             )
+
+        else:
+            raise ValueError(f"Invalid mode: {mode}. Choose 'truncate' or 'pad'.")

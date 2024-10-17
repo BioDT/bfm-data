@@ -8,6 +8,7 @@ from pathlib import Path
 import requests
 import torchaudio
 import torchaudio.transforms as T
+from pydub import AudioSegment
 
 from src.config.paths import DATA_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
@@ -161,8 +162,17 @@ class XenoCantoDownloader(Downloader):
             temp_file.write(request_result.content)
             temp_file_path = temp_file.name
 
-        waveform, sample_rate = torchaudio.load(temp_file_path)
-        os.remove(temp_file_path)
+        try:
+            audio = AudioSegment.from_mp3(temp_file_path)
+            wav_path = temp_file_path.replace(".mp3", ".wav")
+            audio.export(wav_path, format="wav")
+            os.remove(temp_file_path)
+        except Exception as e:
+            print(f"Error converting MP3 to WAV: {e}")
+            return
+
+        waveform, sample_rate = torchaudio.load(wav_path)
+        os.remove(wav_path)
 
         if sample_rate != self.AUDIO_SAMPLE_RATE:
             resampler = T.Resample(
@@ -175,8 +185,19 @@ class XenoCantoDownloader(Downloader):
         group = recording.get("group", "Uknown")
         country = recording.get("cnt", "Uknown")
         try:
-            lat = float(recording.get("lat", "0.0"))
-            lon = float(recording.get("lng", "0.0"))
+            lat = recording.get("lat", "0.0")
+            lon = recording.get("lng", "0.0")
+
+            if lat is None:
+                lat = 0.0
+            else:
+                lat = float(lat)
+
+            if lon is None:
+                lon = 0.0
+            else:
+                lon = float(lon)
+
         except ValueError:
             lat, lon = 0.0, 0.0
 

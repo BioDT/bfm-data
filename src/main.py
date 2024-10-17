@@ -7,7 +7,11 @@ from src.data_ingestion.api_clients.era5 import era5
 from src.data_ingestion.api_clients.inaturalist import inaturalist
 from src.data_ingestion.api_clients.mapoflife import mop
 from src.data_ingestion.api_clients.xenocanto import xeno_canto
-from src.dataset_creation.create_dataset import create_dataset, create_species_dataset
+from src.data_ingestion.ingestion_scripts.livingplanetindex import livingplanextindex
+from src.data_ingestion.ingestion_scripts.species_occurences import (
+    gbif_species_occurrence,
+)
+from src.dataset_creation.create_dataset import create_dataset
 
 
 def run_era5(args):
@@ -43,6 +47,16 @@ def run_inaturalist():
 def run_mapoflife():
     """Run the Map of Life data downloader."""
     mop()
+
+
+def run_liningplanetindex():
+    """Run the Living Planet Index data downloader"""
+    livingplanextindex()
+
+
+def run_gbif_species_occurrence():
+    """Run the GBIF Species Occurrence data downloader"""
+    gbif_species_occurrence()
 
 
 def run_create_dataset(args):

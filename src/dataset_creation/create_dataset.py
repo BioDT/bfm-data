@@ -23,11 +23,13 @@ from src.dataset_creation.load_data import (
 )
 from src.dataset_creation.metadata import BatchMetadata
 from src.dataset_creation.preprocessing import (
+    crop_lat_lon,
     initialize_climate_tensors,
     initialize_species_tensors,
     merge_timestamps,
     preprocess_and_normalize_species_data,
     preprocess_era5,
+    rescale_sort_lat_lon,
     reset_climate_tensors,
     reset_species_tensors,
 )
@@ -426,14 +428,182 @@ def create_batches(
         list[DataBatch]: A list of DataBatch objects containing both climate and species data.
     """
 
-    def initialize_data():
-        """Initialize common ranges, tensors, and return them."""
+    species_dataset["Longitude"] = species_dataset["Longitude"].apply(
+        lambda lon: (lon + 360) % 360 if lon < 0 else lon
+    )
 
-        lat_ = species_dataset[["Latitude"]].drop_duplicates()
-        lon_ = species_dataset[["Longitude"]].drop_duplicates()
+    def initialize_data(crop_lat_n=None, crop_lon_n=None):
+        """
+        Initialize common ranges, tensors, and return them.
 
-        lat_range = lat_["Latitude"].values
-        lon_range = lon_["Longitude"].values
+        Args:
+            crop_n (bool): If it is true, then crop the latitude and longitude arrays.
+        """
+        # TODO: Uncomment it
+        # lat_ = species_dataset[["Latitude"]].drop_duplicates().dropna()
+        # lon_ = species_dataset[["Longitude"]].drop_duplicates().dropna()
+
+        # lat_range = lat_["Latitude"].values
+        # lon_range = lon_["Longitude"].values
+
+        # Testing with these coord.
+        lat_range = np.array(
+            [
+                -27.25,
+                29.75,
+                -24.0,
+                -27.0,
+                -29.25,
+                -14.25,
+                -35.25,
+                -30.25,
+                -47.75,
+                -35.25,
+                -47.75,
+                6.0,
+                -30.5,
+                41.25,
+                -33.5,
+                -15.25,
+                34.25,
+                44.25,
+                -35.25,
+                -15.75,
+                -33.5,
+                -29.25,
+                -22.25,
+                -47.75,
+                52.25,
+                -2.75,
+                -16.0,
+                -48.0,
+                -23.75,
+                -15.75,
+                -21.75,
+                -30.0,
+                -26.75,
+                -26.75,
+                -2.0,
+                -29.25,
+                26.5,
+                -43.25,
+                -45.75,
+                2.25,
+                -1.5,
+                -35.0,
+                -35.0,
+                -33.75,
+                -33.75,
+                -35.0,
+                -35.0,
+                -35.25,
+                -35.25,
+                -33.5,
+                -33.5,
+                -2.0,
+                6.0,
+                8.5,
+                -47.75,
+                -38.5,
+                -26.25,
+                -1.5,
+                -7.0,
+                -38.5,
+                -6.5,
+                -6.5,
+                -25.25,
+                -26.0,
+                -16.75,
+                -16.75,
+                44.25,
+                -41.5,
+            ]
+        )
+
+        lon_range = np.array(
+            [
+                26.5,
+                351.75,
+                25.25,
+                28.75,
+                26.5,
+                31.75,
+                301.0,
+                297.75,
+                288.75,
+                301.0,
+                288.75,
+                266.25,
+                306.25,
+                242.5,
+                299.75,
+                30.5,
+                250.75,
+                240.25,
+                301.0,
+                30.5,
+                299.0,
+                25.0,
+                303.5,
+                288.75,
+                5.0,
+                287.5,
+                30.5,
+                297.75,
+                303.25,
+                30.5,
+                304.25,
+                23.25,
+                285.5,
+                285.5,
+                274.75,
+                300.75,
+                91.0,
+                295.25,
+                294.5,
+                284.75,
+                274.25,
+                301.0,
+                301.0,
+                304.0,
+                304.0,
+                301.0,
+                301.0,
+                301.0,
+                301.0,
+                299.5,
+                299.5,
+                274.75,
+                284.0,
+                273.75,
+                297.25,
+                295.0,
+                306.0,
+                274.25,
+                286.0,
+                295.0,
+                286.75,
+                286.75,
+                21.5,
+                29.25,
+                304.5,
+                304.5,
+                301.25,
+                288.25,
+            ]
+        )
+
+        lat_range = np.unique(lat_range[~np.isnan(lat_range)])
+        lon_range = np.unique(lon_range[~np.isnan(lon_range)])
+
+        if crop_lat_n is not None or crop_lon_n is not None:
+            crop_lat_n = crop_lat_n if crop_lat_n is not None else len(lat_range)
+            crop_lon_n = crop_lon_n if crop_lon_n is not None else len(lon_range)
+            lat_range, lon_range = crop_lat_lon(
+                lat_range, lon_range, crop_lat_n, crop_lon_n
+            )
+
+        lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range)
 
         T = 2
         pressure_levels = 13

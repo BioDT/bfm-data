@@ -1,17 +1,15 @@
 # src/dataset_creation/preprocessing.py
 
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
-from sklearn.preprocessing import StandardScaler
 
 from src.data_preprocessing.transformation.text import label_encode
 from src.dataset_creation.batch import DataBatch
-from src.dataset_creation.load_data import load_species_data
 
 
 def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame:
@@ -126,6 +124,58 @@ def round_to_nearest_hour(species_time: datetime, interval_hours: int = 6) -> da
     return species_time.replace(
         hour=closest_time.hour, minute=0, second=0, microsecond=0
     )
+
+
+def crop_lat_lon(
+    lat_range: np.ndarray, lon_range: np.ndarray, crop_lat_n: int, crop_lon_n: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Crop latitude and longitude arrays to keep only the first 'crop_lat_n' for latitude
+    and 'crop_lon_n' for longitude.
+
+    Args:
+        lat_range (np.ndarray): Array of latitude values.
+        lon_range (np.ndarray): Array of longitude values.
+        crop_lat_n (int): Number of latitude values to keep.
+        crop_lon_n (int): Number of longitude values to keep.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Cropped arrays of latitude and longitude values.
+    """
+    cropped_lat_range = lat_range[: min(len(lat_range), crop_lat_n)]
+    cropped_lon_range = lon_range[: min(len(lon_range), crop_lon_n)]
+
+    return cropped_lat_range, cropped_lon_range
+
+
+def rescale_sort_lat_lon(
+    lat_range: np.ndarray, lon_range: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Rescale longitude values to [0, 360] and sort both latitude and longitude arrays.
+
+    Args:
+        lat_range (np.ndarray): Array containing latitude values.
+        lon_range (np.ndarray): Array containing longitude values.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Sorted arrays of latitude and rescaled longitude values.
+    """
+    lat_range_clean = [lat for lat in lat_range if not np.isnan(lat)]
+    sorted_lat_range = sorted(lat_range_clean, reverse=True)
+
+    lon_range_clean = [lon for lon in lon_range if not np.isnan(lon)]
+    lon_range_rescaled = [
+        (lon + 360) % 360 if lon < 0 else lon for lon in lon_range_clean
+    ]
+    sorted_lon_range = sorted(lon_range_rescaled)
+
+    lat_range = np.array(sorted_lat_range)
+    lon_range = np.array(sorted_lon_range)
+    lat_range = lat_range.astype(float)
+    lon_range = lon_range.astype(float)
+
+    return lat_range, lon_range
 
 
 def merge_timestamps(
@@ -301,6 +351,7 @@ def preprocess_era5(
     device: torch.device,
     locations: Dict[str, float],
     scales: Dict[str, float],
+    crop_mode: str = "truncate",
 ) -> DataBatch:
     """
     Prepares the batch by applying data type conversion, normalization, cropping,
@@ -310,10 +361,11 @@ def preprocess_era5(
         batch (DataBatch): The input batch containing data.
         dtype (torch.dtype): The target data type for the batch.
         device (torch.device): The device to which the batch should be transferred (e.g., CPU or GPU).
-            locations (Dict[str, float]): A dictionary where the key is the variable name
+        locations (Dict[str, float]): A dictionary where the key is the variable name
                                     and the value is the mean for that variable.
-            scales (Dict[str, float]): A dictionary where the key is the variable name
+        scales (Dict[str, float]): A dictionary where the key is the variable name
                                         and the value is the standard deviation for that variable.
+        crop_mode (str): The mode for adjusting the batch dimensions ('truncate' or 'pad').
 
     Returns:
         DataBatch: The prepared batch ready for use in the model.
@@ -321,7 +373,7 @@ def preprocess_era5(
     batch = batch.type(dtype)
     batch = batch.normalize_data(locations, scales)
     patch_size = 4
-    batch = batch.crop(patch_size=patch_size)
+    batch = batch.crop(patch_size=patch_size, mode=crop_mode)
     batch = batch.to(device)
 
     return batch

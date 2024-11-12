@@ -1,5 +1,7 @@
 # src/dataset_creation/preprocessing.py
 
+import glob
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
@@ -7,9 +9,12 @@ import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 from src.data_preprocessing.transformation.text import label_encode
 from src.dataset_creation.batch import DataBatch
+
+pd.set_option("future.no_silent_downcasting", True)
 
 
 def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame:
@@ -28,22 +33,28 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
     """
 
     if "Timestamp" in dataset.columns:
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda x: np.nan if x in ["Unknown", "Uknown", None, np.nan] else x
+        )
+
+        dataset["Timestamp"] = dataset["Timestamp"].apply(standardize_timestamp_format)
+
         dataset["Timestamp"] = pd.to_datetime(
             dataset["Timestamp"], errors="coerce", utc=True
         ).dt.tz_localize(None)
 
-    dataset["Timestamp"] = dataset["Timestamp"].apply(
-        lambda ts: ts.to_pydatetime() if pd.notnull(ts) else None
-    )
-    dataset["Timestamp"] = dataset["Timestamp"].apply(
-        lambda ts: round_to_nearest_hour(ts) if pd.notnull(ts) else None
-    )
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: ts.to_pydatetime() if pd.notnull(ts) else None
+        )
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: round_to_nearest_hour(ts) if pd.notnull(ts) else None
+        )
 
-    dataset["Timestamp"] = dataset["Timestamp"].apply(
-        lambda ts: (np.datetime64(ts).astype("datetime64[s]").tolist(),)
-        if pd.notnull(ts)
-        else None
-    )
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: (np.datetime64(ts).astype("datetime64[s]").tolist(),)
+            if pd.notnull(ts)
+            else None
+        )
 
     dataset["Species"] = label_encode(dataset, "Species")
     dataset["Phylum"] = label_encode(dataset, "Phylum")
@@ -60,19 +71,23 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
         lambda lon: round_to_nearest_grid(lon) if pd.notnull(lon) else np.nan
     )
 
-    dataset["Image"] = dataset["Image"].apply(
-        lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-    )
+    if "Image" in dataset.columns:
+        dataset["Image"] = dataset["Image"].apply(
+            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
+        )
+    if "Audio" in dataset.columns:
+        dataset["Audio"] = dataset["Audio"].apply(
+            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
+        )
+    if "eDNA" in dataset.columns:
+        dataset["eDNA"] = dataset["eDNA"].apply(
+            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
+        )
+    if "Description" in dataset.columns:
+        dataset["Description"] = dataset["Description"].apply(
+            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
+        )
 
-    dataset["Audio"] = dataset["Audio"].apply(
-        lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-    )
-    dataset["eDNA"] = dataset["eDNA"].apply(
-        lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-    )
-    dataset["Description"] = dataset["Description"].apply(
-        lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-    )
     dataset["Latitude"] = dataset["Latitude"].apply(
         lambda x: torch.tensor(x, dtype=torch.float16)
     )
@@ -80,7 +95,34 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
         lambda x: torch.tensor(x, dtype=torch.float16)
     )
 
+    if "Distribution" in dataset.columns:
+        scaler = StandardScaler()
+        dataset["Distribution"] = scaler.fit_transform(
+            dataset[["Distribution"]].fillna(0)
+        )
+        dataset["Distribution"] = dataset["Distribution"].apply(
+            lambda x: torch.tensor(x, dtype=torch.float16)
+        )
+
     return dataset
+
+
+def standardize_timestamp_format(ts):
+    """
+    Converts a timestamp to a standardized ISO 8601 format without timezone information.
+
+    Args:
+        ts (Any): The timestamp to standardize. Can be a string, datetime, or other format that
+                  can be parsed by pd.to_datetime().
+
+    Returns:
+        str or None: The timestamp in ISO 8601 format without timezone if conversion succeeds;
+                     None if the input is invalid or missing.
+    """
+    if pd.notnull(ts):
+        ts = pd.to_datetime(ts, utc=True).tz_localize(None)
+        return ts.strftime("%Y-%m-%dT%H:%M:%S")
+    return None
 
 
 def round_to_nearest_grid(value: float, grid_spacing: float = 0.25) -> float:
@@ -299,16 +341,107 @@ def initialize_species_tensors(
     """
     return {
         "Species": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Image": torch.empty(T, len(lat_range), len(lon_range), 3, 64, 64),
-        "Audio": torch.empty(T, len(lat_range), len(lon_range), 1, 13, 1),
+        # "Image": torch.empty(T, len(lat_range), len(lon_range), 3, 64, 64),
+        # "Audio": torch.empty(T, len(lat_range), len(lon_range), 1, 13, 1),
         "Description": torch.empty(T, len(lat_range), len(lon_range), 1, 64, 64),
-        "eDNA": torch.empty(T, len(lat_range), len(lon_range), 256),
+        # "eDNA": torch.empty(T, len(lat_range), len(lon_range), 256),
         "Phylum": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
         "Class": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
         "Order": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
         "Family": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
         "Genus": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
         "Redlist": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Distribution": torch.empty(
+            T, len(lat_range), len(lon_range), dtype=torch.float16
+        ),
+    }
+
+
+def initialize_species_extinction_tensors(
+    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+) -> Dict[str, torch.Tensor]:
+    """
+    Create empty tensors for extinct species data.
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of empty tensors for extinct pecies data.
+    """
+    return {
+        "ExtinctionValue": torch.empty(
+            T, len(lat_range), len(lon_range), dtype=torch.float16
+        ),
+    }
+
+
+def initialize_land_tensors(
+    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+) -> Dict[str, torch.Tensor]:
+    """
+    Create empty tensors for land data.
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of empty tensors for ndvi data.
+    """
+    return {
+        "Land": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "NDVI": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+    }
+
+
+def initialize_agriculture_tensors(
+    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+) -> Dict[str, torch.Tensor]:
+    """
+    Create empty tensors for agriculture data.
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of empty tensors for agriculture data.
+    """
+    return {
+        "AgricultureLand": torch.empty(
+            T, len(lat_range), len(lon_range), dtype=torch.float16
+        ),
+        "AgricultureIrrLand": torch.empty(
+            T, len(lat_range), len(lon_range), dtype=torch.float16
+        ),
+        "ArableLand": torch.empty(
+            T, len(lat_range), len(lon_range), dtype=torch.float16
+        ),
+        "Cropland": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+    }
+
+
+def initialize_forest_tensors(
+    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+) -> Dict[str, torch.Tensor]:
+    """
+    Create empty tensors for forest data.
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of empty tensors for forest data.
+    """
+    return {
+        "Forest": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
     }
 
 
@@ -332,17 +465,17 @@ def reset_climate_tensors(surfaces_variables, single_variables, atmospheric_vari
         atmospheric_variables[var_name] = torch.empty_like(tensor)
 
 
-def reset_species_tensors(species_variables):
+def reset_tensors(variables):
     """
-    Reset the species-related tensors to zero. For tensors with more than two dimensions,
+    Reset the tensors to zero. For tensors with more than two dimensions,
     the function sets all values to zero. For lower-dimensional tensors (e.g., vectors or matrices),
     the behavior is the same.
 
     Args:
-        species_variables (dict): Dictionary of species-related tensors.
+        species_variables (dict): Dictionary of tensors.
     """
-    for var_name, tensor in species_variables.items():
-        species_variables[var_name] = torch.empty_like(tensor)
+    for var_name, tensor in variables.items():
+        variables[var_name] = torch.empty_like(tensor)
 
 
 def preprocess_era5(

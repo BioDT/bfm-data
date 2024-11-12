@@ -1,5 +1,6 @@
 # src/utils/statistics.py
 
+import csv
 import logging
 import os
 import warnings
@@ -14,7 +15,7 @@ from geopy.geocoders import Nominatim
 from scipy.spatial.distance import pdist, squareform
 from scipy.stats import entropy
 
-from src.config.paths import STATISTICS_DIR
+from src.config import paths
 from src.dataset_creation.load_data import load_species_data
 
 warnings.filterwarnings("ignore", category=UserWarning, module="cartopy")
@@ -61,18 +62,13 @@ def dataset_statistics(species_file: str) -> None:
     """
     species_dataset = load_species_data(species_file)
 
-    total_datapoints = len(species_dataset)
-
-    image_count = species_dataset["Image"].notna().sum()
-    audio_count = species_dataset["Audio"].notna().sum()
-    edna_count = species_dataset["eDNA"].notna().sum()
-    description_count = species_dataset["Description"].notna().sum()
-
-    print(f"Total number of data points: {total_datapoints}")
-    print(f"Number of entries with Images: {image_count}")
-    print(f"Number of entries with Audio: {audio_count}")
-    print(f"Number of entries with eDNA: {edna_count}")
-    print(f"Number of entries with Descriptions: {description_count}")
+    return {
+        "Total data points": len(species_dataset),
+        "Entries with Images": species_dataset["Image"].notna().sum(),
+        "Entries with Audio": species_dataset["Audio"].notna().sum(),
+        "Entries with eDNA": species_dataset["eDNA"].notna().sum(),
+        "Entries with Descriptions": species_dataset["Description"].notna().sum(),
+    }
 
 
 def count_points_by_country_city(
@@ -98,11 +94,11 @@ def count_points_by_country_city(
     species_dataset["Timestamp"] = pd.to_datetime(species_dataset["Timestamp"])
 
     if start_date:
-        start_date = pd.to_datetime(start_date)
+        start_date = pd.to_datetime(start_date, dayfirst=True)
         species_dataset = species_dataset[species_dataset["Timestamp"] >= start_date]
 
     if end_date:
-        end_date = pd.to_datetime(end_date)
+        end_date = pd.to_datetime(end_date, dayfirst=True)
         species_dataset = species_dataset[species_dataset["Timestamp"] <= end_date]
 
     species_dataset = species_dataset.dropna(subset=["Latitude", "Longitude"])
@@ -116,13 +112,27 @@ def count_points_by_country_city(
         country_counter[country] += 1
         city_counter[city] += 1
 
-    print("\nPoints by Country:")
-    for country, count in country_counter.items():
-        print(f"{country}: {count} points")
+    return country_counter, city_counter
 
-    print("\nPoints by City:")
-    for city, count in city_counter.items():
-        print(f"{city}: {count} points")
+
+def get_species_distribution_by_class(species_file: str) -> None:
+    """
+    Calculate the distribution of species by class in the dataset.
+
+    Args:
+        species_file (str): Path to the Parquet file containing species data.
+
+    Returns:
+        None.
+    """
+    species_dataset = load_species_data(species_file)
+
+    if "Genus" in species_dataset.columns and not species_dataset["Genus"].isna().all():
+        print(species_dataset["Genus"])
+        return species_dataset["Genus"].value_counts()
+    else:
+        print("The dataset does not contain any data in the 'Class' column.")
+        return pd.Series(dtype=int)
 
 
 def get_unique_filename(output_dir: str, base_name: str) -> str:
@@ -220,7 +230,7 @@ def visualize_data_on_map(
         f"Species Data from {start_date.date()} to {end_date.date()}", fontsize=14
     )
 
-    output_dir = STATISTICS_DIR
+    output_dir = paths.STATISTICS_DIR
     os.makedirs(output_dir, exist_ok=True)
 
     base_name = f"species_map_{start_date.date()}_{end_date.date()}"
@@ -368,7 +378,7 @@ def calculate_beta_diversity(species_file: str) -> pd.DataFrame:
 
 def analyze_climate_biodiversity(
     species_file: str, climate_data: xr.Dataset, indicator
-):
+) -> pd.DataFrame:
     """
     Analyze biodiversity in relation to a specific climate indicator.
 
@@ -399,7 +409,7 @@ def analyze_climate_biodiversity(
     return biodiversity_stats
 
 
-def analyze_biodiversity(species_file: str):
+def analyze_biodiversity(species_file: str) -> None:
     """
     Perform biodiversity analysis on the species dataset by calculating species richness,
     Shannon's index, Simpson's index, and functional diversity.
@@ -416,3 +426,131 @@ def analyze_biodiversity(species_file: str):
 
     simpson_index = calculate_simpson_index(species_file)
     print(f"Simpson's Diversity Index: {simpson_index}")
+
+
+def analyze_directory(base_directory: str) -> None:
+    """
+    Analyze the directory structure to count the occurrences of images, audio files,
+    eDNA files, description files, and distribution files. Additionally, categorize
+    folders based on the types of files they contain, and write a summary report
+    to 'directory_analysis.txt'.
+
+    Args:
+        base_directory (str): The root directory containing species and environmental data.
+    """
+
+    total_folders = 0
+    image_count = 0
+    audio_count = 0
+    edna_count = 0
+    description_count = 0
+    distribution_count = 0
+    condition_counts = Counter()
+
+    image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"}
+    audio_extensions = {".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a"}
+
+    for root, _, files in os.walk(base_directory):
+        if root != base_directory:
+            total_folders += 1  # Increment for each folder encountered
+
+        has_images = has_audio = has_edna = False
+
+        for file in files:
+            _ = os.path.join(root, file)
+            extension = os.path.splitext(file)[1].lower()
+
+            if extension in image_extensions:
+                has_images = True
+                image_count += 1
+
+            elif extension in audio_extensions:
+                has_audio = True
+                audio_count += 1
+
+            elif file.endswith("_edna.csv"):
+                has_edna = True
+                edna_count += 1
+            elif file.endswith("_description.csv"):
+                description_count += 1
+            elif file.endswith("_distribution.csv"):
+                distribution_count += 1
+
+        if has_images and not has_audio and not has_edna:
+            condition_counts["folders_with_images_no_audio_no_edna"] += 1
+        if has_audio and not has_images and not has_edna:
+            condition_counts["folders_with_audio_no_images_no_edna"] += 1
+        if has_edna and not has_images and not has_audio:
+            condition_counts["folders_with_edna_no_images_no_audio"] += 1
+        if has_images and has_audio and not has_edna:
+            condition_counts["folders_with_images_audio_no_edna"] += 1
+        if has_images and has_edna and not has_audio:
+            condition_counts["folders_with_images_edna_no_audio"] += 1
+        if has_audio and has_edna and not has_images:
+            condition_counts["folders_with_audio_edna_no_images"] += 1
+        if has_images and has_audio and has_edna:
+            condition_counts["folders_with_all_files"] += 1
+
+    with open(
+        f"{paths.STATISTICS_DIR}/directory_analysis.csv", "w", newline=""
+    ) as csvfile:
+        writer = csv.writer(csvfile)
+
+        writer.writerow(["Category", "Count"])
+
+        writer.writerow(["Total folders", total_folders])
+        writer.writerow(["Total images", image_count])
+        writer.writerow(["Total audios", audio_count])
+        writer.writerow(["Total '_edna.csv' files", edna_count])
+        writer.writerow(["Total '_description.csv' files", description_count])
+        writer.writerow(["Total '_distribution.csv' files", distribution_count])
+
+        for condition, count in condition_counts.items():
+            writer.writerow([condition.replace("_", " ").capitalize(), count])
+
+    print("Analysis completed and saved to 'directory_analysis.csv'.")
+
+
+def analyze_dataset(
+    species_file: str, start_date: str = None, end_date: str = None
+) -> None:
+    """
+    Generate a CSV report for dataset statistics, including modality counts, species distribution by class,
+    and data points by country and city.
+
+    Args:
+        species_file (str): Path to the Parquet file containing species data.
+        start_date (str): Start date for filtering in the format 'YYYY-MM-DD'.
+        end_date (str): End date for filtering in the format 'YYYY-MM-DD'.
+    """
+    dataset_stats = dataset_statistics(species_file)
+    class_distribution = get_species_distribution_by_class(species_file)
+    country_counter, city_counter = count_points_by_country_city(
+        species_file, start_date, end_date
+    )
+
+    with open(
+        f"{paths.STATISTICS_DIR}/dataset_statistics.csv", "w", newline=""
+    ) as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Category", "Count"])
+
+        for key, value in dataset_stats.items():
+            writer.writerow([key, value])
+
+        writer.writerow([])
+        writer.writerow(["Species distribution by class"])
+        for species_class, count in class_distribution.items():
+            writer.writerow([species_class, count])
+
+        writer.writerow([])
+        writer.writerow(["Points by Country"])
+        for country, count in country_counter.items():
+            writer.writerow([country, count])
+
+        writer.writerow([])
+        writer.writerow(["Points by City"])
+        for city, count in city_counter.items():
+            writer.writerow([city, count])
+
+    print("Dataset analysis completed and saved to 'dataset_statistics.csv'.")

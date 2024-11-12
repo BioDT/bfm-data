@@ -45,6 +45,9 @@ class LivingPlanetIndexDownloader:
         Args:
             species_data (pd.DataFrame): DataFrame containing species, lat/lon, and their yearly data.
         """
+        species_data["Latitude"] = (species_data["Latitude"] * 4).round() / 4
+        species_data["Longitude"] = (species_data["Longitude"] * 4).round() / 4
+
         grouped = species_data.groupby("Binomial")
 
         for species_name, group in grouped:

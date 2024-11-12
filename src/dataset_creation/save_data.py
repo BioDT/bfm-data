@@ -23,7 +23,7 @@ def serialize_array(array):
     Returns:
         str: The Base64-encoded string representing the serialized NumPy array.
     """
-    array = array.astype(np.float32)
+    array = np.array(array, dtype=np.float32)
     serialized = base64.b64encode(array.tobytes()).decode("utf-8")
     return serialized
 
@@ -53,14 +53,17 @@ def save_as_parquet(dataset: pd.DataFrame, filepath: str):
         else x
     )
     dataset["Description"] = dataset["Description"].apply(
-        lambda x: serialize_array(np.array(x))
-        if isinstance(x, (torch.Tensor, np.ndarray))
+        lambda x: serialize_array(x)
+        if isinstance(x, (torch.Tensor, np.ndarray, list))
         else x
     )
     dataset["Latitude"] = dataset["Latitude"].apply(
         lambda x: x.numpy() if isinstance(x, torch.Tensor) else x
     )
     dataset["Longitude"] = dataset["Longitude"].apply(
+        lambda x: x.numpy() if isinstance(x, torch.Tensor) else x
+    )
+    dataset["Distribution"] = dataset["Distribution"].apply(
         lambda x: x.numpy() if isinstance(x, torch.Tensor) else x
     )
 

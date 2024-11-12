@@ -1,12 +1,14 @@
 # src/data_creation/create_dataset.py
 
 import os
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
 
+from src.config import paths
 from src.config.paths import BATCHES_DATA_DIR
 from src.data_preprocessing.preprocessing import (
     preprocess_audio,
@@ -20,18 +22,23 @@ from src.dataset_creation.load_data import (
     load_era5_datasets,
     load_era5_files_grouped_by_date,
     load_species_data,
+    load_world_bank_data,
 )
 from src.dataset_creation.metadata import BatchMetadata
 from src.dataset_creation.preprocessing import (
     crop_lat_lon,
+    initialize_agriculture_tensors,
     initialize_climate_tensors,
+    initialize_forest_tensors,
+    initialize_land_tensors,
+    initialize_species_extinction_tensors,
     initialize_species_tensors,
     merge_timestamps,
     preprocess_and_normalize_species_data,
     preprocess_era5,
     rescale_sort_lat_lon,
     reset_climate_tensors,
-    reset_species_tensors,
+    reset_tensors,
 )
 from src.dataset_creation.save_data import (
     save_as_parquet,
@@ -39,7 +46,7 @@ from src.dataset_creation.save_data import (
 )
 from src.utils.merge_data import (
     extract_metadata_from_csv,
-    folder_has_all_modalities,
+    find_closest_lat_lon,
     matching_image_audios,
 )
 
@@ -57,7 +64,7 @@ def create_species_dataset(root_folder: str, filepath: str) -> pd.DataFrame:
     Returns:
         None
     """
-    max_rows_per_species: int = 40
+    max_rows_per_species: int = 3
     rows = []
 
     for species_folder in os.listdir(root_folder):
@@ -66,13 +73,12 @@ def create_species_dataset(root_folder: str, filepath: str) -> pd.DataFrame:
         if not os.path.isdir(species_path):
             continue
 
-        if not folder_has_all_modalities(species_path):
-            continue
-
         image_metadata_list = []
         audio_metadata_list = []
         edna_file_path = None
         description_file_path = None
+        distribution_file_path = None
+        taxonomic_data = {}
 
         for file_name in os.listdir(species_path):
             file_path = os.path.join(species_path, file_name)
@@ -80,21 +86,54 @@ def create_species_dataset(root_folder: str, filepath: str) -> pd.DataFrame:
             if file_name.endswith("_image.csv"):
                 image_metadata = extract_metadata_from_csv(file_path, "image")
                 image_metadata_list.append(image_metadata)
+                if not edna_file_path and not taxonomic_data:
+                    taxonomic_data = {
+                        "Phylum": image_metadata.get("Phylum"),
+                        "Class": image_metadata.get("Class"),
+                        "Order": image_metadata.get("Order"),
+                        "Family": image_metadata.get("Family"),
+                        "Genus": image_metadata.get("Genus"),
+                    }
             elif file_name.endswith("_audio.csv"):
                 audio_metadata = extract_metadata_from_csv(file_path, "audio")
                 audio_metadata_list.append(audio_metadata)
+                if not edna_file_path and not taxonomic_data:
+                    taxonomic_data = {
+                        "Phylum": audio_metadata.get("Phylum"),
+                        "Class": audio_metadata.get("Class"),
+                        "Order": audio_metadata.get("Order"),
+                        "Family": audio_metadata.get("Family"),
+                        "Genus": audio_metadata.get("Genus"),
+                    }
             elif file_name.endswith("_edna.csv"):
                 edna_file_path = file_path
             elif file_name.endswith("_description.csv"):
                 description_file_path = file_path
+            elif file_name.endswith("_distribution.csv"):
+                distribution_file_path = pd.read_csv(file_path)
 
-        image_metadata_df = pd.DataFrame(image_metadata_list)
-        audio_metadata_df = pd.DataFrame(audio_metadata_list)
+        image_metadata_df = (
+            pd.DataFrame(image_metadata_list) if image_metadata_list else None
+        )
+        audio_metadata_df = (
+            pd.DataFrame(audio_metadata_list) if audio_metadata_list else None
+        )
+        distribution_data = (
+            pd.read_csv(distribution_file_path)
+            if isinstance(distribution_file_path, str)
+            else pd.DataFrame()
+        )
 
-        matched_data = matching_image_audios(image_metadata_df, audio_metadata_df)
-
-        if len(matched_data) > max_rows_per_species:
-            matched_data = matched_data[:max_rows_per_species]
+        if image_metadata_df is not None and audio_metadata_df is not None:
+            matched_data = matching_image_audios(image_metadata_df, audio_metadata_df)
+            if len(matched_data) > max_rows_per_species:
+                matched_data = matched_data[:max_rows_per_species]
+        elif image_metadata_df is not None:
+            matched_data = image_metadata_df.to_dict("records")
+        elif audio_metadata_df is not None:
+            matched_data = audio_metadata_df.to_dict("records")
+        else:
+            matched_data = []
 
         edna_data = pd.read_csv(edna_file_path) if edna_file_path else pd.DataFrame()
         description_data = (
@@ -103,43 +142,124 @@ def create_species_dataset(root_folder: str, filepath: str) -> pd.DataFrame:
             else pd.DataFrame()
         )
 
-        for match in matched_data:
+        if matched_data:
+            for match in matched_data:
+                row = {
+                    "Species": species_folder,
+                    "Latitude": match.get("Latitude"),
+                    "Longitude": match.get("Longitude"),
+                    "Timestamp": match.get("Timestamp"),
+                    "Image": None,
+                    "Audio": None,
+                    "eDNA": None,
+                    "Description": None,
+                    "Distribution": None,
+                }
 
-            image_file = match["Image_path"]
-            audio_file = match["Audio_path"]
+                if "Image_path" in match:
+                    image_file = match["Image_path"]
+                    image_features = preprocess_image(
+                        image_file,
+                        crop=False,
+                        denoise=True,
+                        blur=False,
+                        augmentation=True,
+                        normalize=True,
+                    )
+                    row["Image"] = image_features["normalised_image"]
 
-            image_features = preprocess_image(
-                image_file,
-                crop=False,
-                denoise=True,
-                blur=False,
-                augmentation=True,
-                normalize=True,
-            )
+                if "Audio_path" in match:
+                    audio_file = match["Audio_path"]
+                    audio_features = preprocess_audio(
+                        audio_file,
+                        rem_silence=False,
+                        red_noise=True,
+                        resample=True,
+                        normalize=True,
+                        mfcc=True,
+                        convert_spectrogram=False,
+                        convert_log_mel_spectrogram=False,
+                    )
+                    row["Audio"] = audio_features["mfcc_features"]
 
-            image = image_features["normalised_image"]
+                all_ednas = []
 
-            audio_features = preprocess_audio(
-                audio_file,
-                rem_silence=False,
-                red_noise=True,
-                resample=True,
-                normalize=True,
-                mfcc=True,
-                convert_spectrogram=False,
-                convert_log_mel_spectrogram=False,
-            )
+                if not edna_data.empty:
+                    for _, edna_row in edna_data.iterrows():
+                        edna_sequence = edna_row["Nucleotides"]
 
-            mfcc_features = audio_features["mfcc_features"]
+                        edna_features = preprocess_edna(
+                            edna_sequence,
+                            clean=True,
+                            replace_ambiguous=True,
+                            threshold=0.5,
+                            extract_kmer=True,
+                            k=4,
+                            one_hot_encode=False,
+                            max_length=256,
+                            vectorize_kmers=True,
+                            normalise=True,
+                        )
 
-            all_ednas = []
+                        edna = edna_features.get("normalised_vector", None)
+                        if edna is not None:
+                            all_ednas.append(edna)
+                    row["eDNA"] = (
+                        torch.stack(all_ednas).mean(dim=0)
+                        if all_ednas
+                        else torch.zeros(256)
+                    )
 
-            if not edna_data.empty:
-                for i, edna_row in edna_data.iterrows():
-                    edna_sequence = edna_row["Nucleotides"]
+                if not edna_data.empty:
+                    biological_features = {
+                        "Phylum": edna_data["Phylum"].iloc[0],
+                        "Class": edna_data["Class"].iloc[0],
+                        "Order": edna_data["Order"].iloc[0],
+                        "Family": edna_data["Family"].iloc[0],
+                        "Genus": edna_data["Genus"].iloc[0],
+                    }
+                else:
+                    biological_features = taxonomic_data
 
-                    edna_features = preprocess_edna(
-                        edna_sequence,
+                row.update(biological_features)
+
+                if (
+                    not description_data.empty
+                    and "description" in description_data.columns
+                ):
+                    description_features = preprocess_text(
+                        description_data["description"].iloc[0],
+                        clean=True,
+                        use_bert=True,
+                        max_length=512,
+                    )
+                    row["Description"] = description_features.get(
+                        "bert_embeddings", [0.0] * 128
+                    )
+                    row["Redlist"] = description_data.get("redlist", [None])[0]
+                else:
+                    row["Description"] = [0.0] * 128
+                    row["Redlist"] = None
+
+                if not distribution_data.empty:
+                    closest_dist = find_closest_lat_lon(
+                        row["Latitude"], row["Longitude"], distribution_data
+                    )
+                    year = row["Timestamp"].year
+                    if str(year) in closest_dist:
+                        row["Distribution"] = closest_dist[str(year)]
+
+                rows.append(row)
+
+        elif not edna_data.empty:
+            for _, edna_row in edna_data.iterrows():
+                row = {
+                    "Species": species_folder,
+                    "Latitude": edna_row["Latitude"],
+                    "Longitude": edna_row["Longitude"],
+                    "Timestamp": edna_row["Timestamp"],
+                    "eDNA": preprocess_edna(
+                        edna_row["Nucleotides"],
                         clean=True,
                         replace_ambiguous=True,
                         threshold=0.5,
@@ -149,73 +269,68 @@ def create_species_dataset(root_folder: str, filepath: str) -> pd.DataFrame:
                         max_length=256,
                         vectorize_kmers=True,
                         normalise=True,
-                    )
-
-                    edna = edna_features.get("normalised_vector", None)
-                    if edna is not None:
-                        all_ednas.append(edna)
-
-            if all_ednas:
-                combined_ednas = torch.stack(all_ednas).mean(dim=0)
-            else:
-                combined_ednas = torch.zeros(256)
-
-            if not edna_data.empty:
-                biological_features = {
-                    "Phylum": edna_data["Phylum"].iloc[0],
-                    "Class": edna_data["Class"].iloc[0],
-                    "Order": edna_data["Order"].iloc[0],
-                    "Family": edna_data["Family"].iloc[0],
-                    "Genus": edna_data["Genus"].iloc[0],
-                }
-            else:
-                biological_features = {
-                    key: None for key in ["Phylum", "Class", "Order", "Family", "Genus"]
+                    ).get("normalised_vector", torch.zeros(256)),
+                    "Phylum": edna_row["Phylum"],
+                    "Class": edna_row["Class"],
+                    "Order": edna_row["Order"],
+                    "Family": edna_row["Family"],
+                    "Genus": edna_row["Genus"],
+                    "Image": None,
+                    "Audio": None,
+                    "Description": None,
+                    "Distribution": None,
                 }
 
-            if not description_data.empty:
-                description_features = (
-                    preprocess_text(
+                if (
+                    not description_data.empty
+                    and "description" in description_data.columns
+                ):
+                    description_features = preprocess_text(
                         description_data["description"].iloc[0],
                         clean=True,
                         use_bert=True,
                         max_length=512,
                     )
-                    if "description" in description_data.columns
-                    else None
-                )
-                bert_embeddings = (
-                    description_features["bert_embeddings"]
-                    if description_features is not None
-                    else [0.0] * 128
-                )
-                redlist = (
-                    description_data["redlist"].iloc[0]
-                    if "redlist" in description_data.columns
-                    else None
-                )
-            else:
-                bert_embeddings = [0.0] * 128
-                redlist = None
+                    row["Description"] = description_features.get(
+                        "bert_embeddings", [0.0] * 128
+                    )
+                    row["Redlist"] = description_data.get("redlist", [None])[0]
+                else:
+                    row["Description"] = [0.0] * 128
+                    row["Redlist"] = None
 
-            row = {
-                "Species": species_folder,
-                "Image": image,
-                "Audio": mfcc_features,
-                "Latitude": match["Latitude"],
-                "Longitude": match["Longitude"],
-                "Timestamp": match["Timestamp"],
-                "eDNA": combined_ednas,
-                "Phylum": biological_features["Phylum"],
-                "Class": biological_features["Class"],
-                "Order": biological_features["Order"],
-                "Family": biological_features["Family"],
-                "Genus": biological_features["Genus"],
-                "Description": bert_embeddings,
-                "Redlist": redlist if redlist is not None else None,
-            }
+                if not distribution_data.empty:
+                    closest_dist = find_closest_lat_lon(
+                        row["Latitude"], row["Longitude"], distribution_data
+                    )
+                    year = row["Timestamp"].year
+                    if str(year) in closest_dist:
+                        row["Distribution"] = closest_dist[str(year)]
+                rows.append(row)
 
-            rows.append(row)
+        if not distribution_data.empty:
+            for _, dist_row in distribution_data.iterrows():
+                for year in range(
+                    int(dist_row.columns[3]), int(dist_row.columns[-1]) + 1
+                ):
+                    for month in range(1, 13):
+                        monthly_row = {
+                            "Species": species_folder,
+                            "Latitude": dist_row["Latitude"],
+                            "Longitude": dist_row["Longitude"],
+                            "Timestamp": datetime(year, month, 1),
+                            "Distribution": dist_row.get(str(year), None),
+                            "Image": None,
+                            "Audio": None,
+                            "Description": None,
+                            "Phylum": None,
+                            "Class": None,
+                            "Order": None,
+                            "Family": None,
+                            "Genus": None,
+                            "Redlist": None,
+                        }
+                        rows.append(monthly_row)
 
     species_dataset = pd.DataFrame(rows)
     normalized_dataset = preprocess_and_normalize_species_data(species_dataset)
@@ -231,10 +346,18 @@ def create_batch(
     single_dataset: xr.Dataset,
     atmospheric_dataset: xr.Dataset,
     species_dataset: pd.DataFrame,
+    species_extinction_dataset: pd.DataFrame,
+    land_dataset: pd.DataFrame,
+    agriculture_dataset: pd.DataFrame,
+    forest_dataset: pd.DataFrame,
     surfaces_variables: dict,
     single_variables: dict,
     atmospheric_variables: dict,
     species_variables: dict,
+    species_extinction_variables: dict,
+    land_variables: dict,
+    agriculture_variables: dict,
+    forest_variables: dict,
 ) -> DataBatch:
     """
     Create a DataBatch for a specific day by merging climate and species data but by giving two timestamps
@@ -248,11 +371,18 @@ def create_batch(
         single_dataset (xarray.Dataset): Single-level variables dataset.
         atmospheric_dataset (xarray.Dataset): Atmospheric pressure-level dataset.
         species_dataset (pd.DataFrame): Species data containing multimodal features.
+        species_extinction_dataset (pd.DataFrame): Species extinction data.
+        land_dataset (pd.DataFrame): Land data.
+        agriculture_dataset (pd.DataFrame): Agriculture data containing agriculture land, arable land, etc.
+        forest_dataset (pd.DataFrame): Forest data.
         surfaces_variables (dict): Pre-initialized surface climate variables tensors.
         single_variables (dict): Pre-initialized single-level climate variables tensors.
         atmospheric_variables (dict): Pre-initialized atmospheric pressure variables tensors.
         species_variables (dict): Pre-initialized species variables tensors.
-
+        species_extinction_variables (dict): Pre-initialized extinct species variables tensors.
+        land_variables (dict): Pre-initialized land variables tensors.
+        agriculture_variables (dict): Pre-initialized agriculture variables tensors.
+        forest_variables (dict): Pre-initialized forest variables tensors.
 
     Returns:
         DataBatch: A DataBatch object containing both climate and species data for the given day.
@@ -349,21 +479,27 @@ def create_batch(
                             t, lat_idx, lon_idx
                         ] = torch.tensor(species_entry["Species"], dtype=torch.float16)
 
-                        species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
-                            "Image"
-                        ]
+                        # species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
+                        #     "Image"
+                        # ]
 
-                        species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
-                            "Audio"
-                        ]
+                        # species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
+                        #     "Audio"
+                        # ]
 
-                        species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
-                            "eDNA"
-                        ]
+                        # species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
+                        #     "eDNA"
+                        # ]
 
                         species_variables["Description"][
                             t, lat_idx, lon_idx
                         ] = species_entry["Description"]
+
+                        species_variables["Distribution"][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(
+                            species_entry["Distribution"], dtype=torch.float16
+                        )
 
                         for category in [
                             "Phylum",
@@ -379,6 +515,102 @@ def create_batch(
                                 species_entry[category], dtype=torch.float16
                             )
 
+        year = pd.Timestamp(current_date[0]).year
+
+        for lat_idx, lat in enumerate(lat_range):
+            for lon_idx, lon in enumerate(lon_range):
+
+                ndvi_at_location = land_dataset[
+                    (land_dataset["Latitude"] == lat)
+                    & (land_dataset["Longitude"] == lon)
+                    & (land_dataset["Variable"] == "NDVI")
+                ]
+
+                if not ndvi_at_location.empty:
+                    ndvi_value = ndvi_at_location.get(str(year), pd.NA).values[0]
+                    land_variables["NDVI"][t, lat_idx, lon_idx] = torch.tensor(
+                        ndvi_value, dtype=torch.float16
+                    )
+
+                land_at_location = land_dataset[
+                    (land_dataset["Latitude"] == lat)
+                    & (land_dataset["Longitude"] == lon)
+                    & (land_dataset["Variable"] == "Land")
+                ]
+                if not land_at_location.empty:
+                    land_value = land_at_location.get(str(year), pd.NA).values[0]
+                    land_variables["Land"][t, lat_idx, lon_idx] = torch.tensor(
+                        land_value, dtype=torch.float16
+                    )
+
+                agriculture_at_location = agriculture_dataset[
+                    (agriculture_dataset["Latitude"] == lat)
+                    & (agriculture_dataset["Longitude"] == lon)
+                ]
+
+                if not agriculture_at_location.empty:
+                    agri_land_row = agriculture_at_location[
+                        agriculture_at_location["Variable"] == "Agriculture"
+                    ]
+                    if not agri_land_row.empty:
+                        agri_land = agri_land_row.get(f"Agri_{year}", pd.NA).values[0]
+                        agriculture_variables["AgricultureLand"][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(agri_land, dtype=torch.float16)
+
+                    agri_irr_land_row = agriculture_at_location[
+                        agriculture_at_location["Variable"] == "Agriculture_Irrigated"
+                    ]
+                    if not agri_irr_land_row.empty:
+                        agri_irr_land = agri_irr_land_row.get(
+                            f"Agri_{year}", pd.NA
+                        ).values[0]
+                        agriculture_variables["AgricultureIrrLand"][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(agri_irr_land, dtype=torch.float16)
+
+                    arable_land_row = agriculture_at_location[
+                        agriculture_at_location["Variable"] == "Arable"
+                    ]
+                    if not arable_land_row.empty:
+                        arable_land = arable_land_row.get(f"Agri_{year}", pd.NA).values[
+                            0
+                        ]
+                        agriculture_variables["ArableLand"][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(arable_land, dtype=torch.float16)
+
+                    cropland_row = agriculture_at_location[
+                        agriculture_at_location["Variable"] == "Cropland"
+                    ]
+                    if not cropland_row.empty:
+                        cropland = cropland_row.get(f"Agri_{year}", pd.NA).values[0]
+                        agriculture_variables["Cropland"][
+                            t, lat_idx, lon_idx
+                        ] = torch.tensor(cropland, dtype=torch.float16)
+
+                forest_at_location = forest_dataset[
+                    (forest_dataset["Latitude"] == lat)
+                    & (forest_dataset["Longitude"] == lon)
+                ]
+                if not forest_at_location.empty:
+                    forest_value = forest_at_location.get(
+                        f"Forest_{year}", pd.NA
+                    ).values[0]
+                    forest_variables["Forest"][t, lat_idx, lon_idx] = torch.tensor(
+                        forest_value, dtype=torch.float16
+                    )
+
+                extinction_at_location = species_extinction_dataset[
+                    (species_extinction_dataset["Latitude"] == lat)
+                    & (species_extinction_dataset["Longitude"] == lon)
+                ]
+                if not extinction_at_location.empty:
+                    extinction_value = extinction_at_location[f"RLI_{year}"].values[0]
+                    species_extinction_variables["Extinction_RLI"][
+                        t, lat_idx, lon_idx
+                    ] = torch.tensor(extinction_value, dtype=torch.float16)
+
     first_timestamp, *_ = dates[0]
 
     batch = DataBatch(
@@ -386,6 +618,10 @@ def create_batch(
         single_variables=single_variables,
         atmospheric_variables=atmospheric_variables,
         species_variables=species_variables,
+        species_extinction_variables=species_extinction_variables,
+        land_variables=land_variables,
+        agriculture_variables=agriculture_variables,
+        forest_variables=forest_variables,
         batch_metadata=BatchMetadata(
             latitudes=torch.tensor(lat_range),
             longitudes=torch.tensor(lon_range),
@@ -412,6 +648,10 @@ def create_batches(
     single_dataset: xr.Dataset,
     atmospheric_dataset: xr.Dataset,
     species_dataset: pd.DataFrame,
+    species_extinction_dataset: pd.DataFrame,
+    land_dataset: pd.DataFrame,
+    agriculture_dataset: pd.DataFrame,
+    forest_dataset: pd.DataFrame,
     load_type: str = "day-by-day",
 ) -> list[DataBatch]:
     """
@@ -439,162 +679,11 @@ def create_batches(
         Args:
             crop_n (bool): If it is true, then crop the latitude and longitude arrays.
         """
-        # TODO: Uncomment it
-        # lat_ = species_dataset[["Latitude"]].drop_duplicates().dropna()
-        # lon_ = species_dataset[["Longitude"]].drop_duplicates().dropna()
 
-        # lat_range = lat_["Latitude"].values
-        # lon_range = lon_["Longitude"].values
+        min_lon, min_lat, max_lon, max_lat = -30, 34.0, 50.0, 72.0
 
-        # Testing with these coord.
-        lat_range = np.array(
-            [
-                -27.25,
-                29.75,
-                -24.0,
-                -27.0,
-                -29.25,
-                -14.25,
-                -35.25,
-                -30.25,
-                -47.75,
-                -35.25,
-                -47.75,
-                6.0,
-                -30.5,
-                41.25,
-                -33.5,
-                -15.25,
-                34.25,
-                44.25,
-                -35.25,
-                -15.75,
-                -33.5,
-                -29.25,
-                -22.25,
-                -47.75,
-                52.25,
-                -2.75,
-                -16.0,
-                -48.0,
-                -23.75,
-                -15.75,
-                -21.75,
-                -30.0,
-                -26.75,
-                -26.75,
-                -2.0,
-                -29.25,
-                26.5,
-                -43.25,
-                -45.75,
-                2.25,
-                -1.5,
-                -35.0,
-                -35.0,
-                -33.75,
-                -33.75,
-                -35.0,
-                -35.0,
-                -35.25,
-                -35.25,
-                -33.5,
-                -33.5,
-                -2.0,
-                6.0,
-                8.5,
-                -47.75,
-                -38.5,
-                -26.25,
-                -1.5,
-                -7.0,
-                -38.5,
-                -6.5,
-                -6.5,
-                -25.25,
-                -26.0,
-                -16.75,
-                -16.75,
-                44.25,
-                -41.5,
-            ]
-        )
-
-        lon_range = np.array(
-            [
-                26.5,
-                351.75,
-                25.25,
-                28.75,
-                26.5,
-                31.75,
-                301.0,
-                297.75,
-                288.75,
-                301.0,
-                288.75,
-                266.25,
-                306.25,
-                242.5,
-                299.75,
-                30.5,
-                250.75,
-                240.25,
-                301.0,
-                30.5,
-                299.0,
-                25.0,
-                303.5,
-                288.75,
-                5.0,
-                287.5,
-                30.5,
-                297.75,
-                303.25,
-                30.5,
-                304.25,
-                23.25,
-                285.5,
-                285.5,
-                274.75,
-                300.75,
-                91.0,
-                295.25,
-                294.5,
-                284.75,
-                274.25,
-                301.0,
-                301.0,
-                304.0,
-                304.0,
-                301.0,
-                301.0,
-                301.0,
-                301.0,
-                299.5,
-                299.5,
-                274.75,
-                284.0,
-                273.75,
-                297.25,
-                295.0,
-                306.0,
-                274.25,
-                286.0,
-                295.0,
-                286.75,
-                286.75,
-                21.5,
-                29.25,
-                304.5,
-                304.5,
-                301.25,
-                288.25,
-            ]
-        )
-
-        lat_range = np.unique(lat_range[~np.isnan(lat_range)])
-        lon_range = np.unique(lon_range[~np.isnan(lon_range)])
+        lat_range = np.arange(min_lat, max_lat + 0.25, 0.25)
+        lon_range = np.arange(min_lon, max_lon + 0.25, 0.25)
 
         if crop_lat_n is not None or crop_lon_n is not None:
             crop_lat_n = crop_lat_n if crop_lat_n is not None else len(lat_range)
@@ -612,8 +701,24 @@ def create_batches(
             lat_range, lon_range, T, pressure_levels
         )
         species_tensors = initialize_species_tensors(lat_range, lon_range, T)
+        species_extinction_tensors = initialize_species_extinction_tensors(
+            lat_range, lon_range, T
+        )
 
-        return lat_range, lon_range, climate_tensors, species_tensors
+        land_tensors = initialize_land_tensors(lat_range, lon_range, T)
+        agriculture_tensors = initialize_agriculture_tensors(lat_range, lon_range, T)
+        forest_tensors = initialize_forest_tensors(lat_range, lon_range, T)
+
+        return (
+            lat_range,
+            lon_range,
+            climate_tensors,
+            species_tensors,
+            species_extinction_tensors,
+            land_tensors,
+            agriculture_tensors,
+            forest_tensors,
+        )
 
     def create_and_save_batch(
         timestamps,
@@ -621,6 +726,10 @@ def create_batches(
         single_variables,
         atmospheric_variables,
         species_variables,
+        species_extinction_variables,
+        land_variables,
+        agriculture_variables,
+        forest_variables,
     ):
         """Create a batch and save it to disk."""
 
@@ -640,21 +749,42 @@ def create_batches(
             single_dataset=single_dataset,
             atmospheric_dataset=atmospheric_dataset,
             species_dataset=species_subset,
+            species_extinction_dataset=species_extinction_dataset,
+            land_dataset=land_dataset,
+            forest_dataset=forest_dataset,
+            agriculture_dataset=agriculture_dataset,
             surfaces_variables=surfaces_variables,
             single_variables=single_variables,
             atmospheric_variables=atmospheric_variables,
             species_variables=species_variables,
+            species_extinction_variables=species_extinction_variables,
+            land_variables=land_variables,
+            agriculture_variables=agriculture_variables,
+            forest_variables=forest_variables,
         )
 
         os.makedirs(os.path.dirname(batch_file), exist_ok=True)
         torch.save(batch, batch_file)
         return batch
 
-    lat_range, lon_range, climate_tensors, species_tensors = initialize_data()
+    (
+        lat_range,
+        lon_range,
+        climate_tensors,
+        species_tensors,
+        species_extinction_tensors,
+        land_tensors,
+        agriculture_tensors,
+        forest_tensors,
+    ) = initialize_data()
     surfaces_variables = climate_tensors["surface"]
     single_variables = climate_tensors["single"]
     atmospheric_variables = climate_tensors["atmospheric"]
     species_variables = species_tensors
+    species_extinction_variables = species_extinction_tensors
+    land_variables = land_tensors
+    agriculture_variables = agriculture_tensors
+    forest_variables = forest_tensors
 
     batches = []
 
@@ -688,6 +818,10 @@ def create_batches(
             single_variables,
             atmospheric_variables,
             species_variables,
+            species_extinction_variables,
+            land_variables,
+            agriculture_variables,
+            forest_variables,
         )
 
         if batch is not None:
@@ -710,6 +844,10 @@ def create_batches(
                 single_variables,
                 atmospheric_variables,
                 species_variables,
+                species_extinction_variables,
+                land_variables,
+                agriculture_variables,
+                forest_variables,
             )
 
             if batch is not None:
@@ -718,7 +856,11 @@ def create_batches(
             reset_climate_tensors(
                 surfaces_variables, single_variables, atmospheric_variables
             )
-            reset_species_tensors(species_variables)
+            reset_tensors(species_variables)
+            reset_tensors(species_extinction_variables)
+            reset_tensors(land_variables)
+            reset_tensors(agriculture_variables)
+            reset_tensors(forest_variables)
 
         return batches
 
@@ -731,6 +873,10 @@ def create_dataset(
     surface_file: str = None,
     single_file: str = None,
     atmospheric_file: str = None,
+    agriculture_file: str = None,
+    land_file: str = None,
+    forest_file: str = None,
+    species_extinction_file: str = None,
 ) -> list[DataBatch]:
     """
     Create DataBatches from the multimodal and ERA5 datasets and save the resulting batches
@@ -743,12 +889,20 @@ def create_dataset(
         surface_file (str): Path to the ERA5 surface dataset. (large file option)
         single_file (str): Path to the ERA5 single-level dataset. (large file option)
         atmospheric_file (str): Path to the ERA5 pressure-level dataset. (large file option)
+        agriculture_file (str): Path to the csv file for agriculture data.
+        land_file (str): Path to the csv file for land data.
+        forest_file (str): Path to the csv file for forest data.
+        species_extinction_file (str): Path to the csv file for species extinction data.
         batch_metadata_file (str): Path to the Parquet file where batch metadata will be stored.
 
     Returns:
         None.
     """
     species_dataset = load_species_data(species_file)
+    agriculture_dataset = load_world_bank_data(agriculture_file)
+    land_dataset = load_world_bank_data(land_file)
+    forest_dataset = load_world_bank_data(forest_file)
+    species_extinction_dataset = load_world_bank_data(species_extinction_file)
 
     if load_type == "day-by-day":
         batches = []
@@ -790,6 +944,10 @@ def create_dataset(
                 single_dataset=single_dataset,
                 atmospheric_dataset=atmospheric_dataset,
                 species_dataset=species_dataset,
+                agriculture_dataset=agriculture_dataset,
+                forest_dataset=forest_dataset,
+                land_dataset=land_dataset,
+                species_extinction_dataset=species_extinction_dataset,
             )
 
             if batch is not None:
@@ -815,6 +973,10 @@ def create_dataset(
             single_dataset=single_dataset,
             atmospheric_dataset=atmospheric_dataset,
             species_dataset=species_dataset,
+            agriculture_dataset=agriculture_dataset,
+            forest_dataset=forest_dataset,
+            land_dataset=land_dataset,
+            species_extinction_dataset=species_extinction_dataset,
         )
 
         save_batch_metadata_to_parquet(batches, batch_metadata_file)

@@ -35,6 +35,15 @@ def load_era5_datasets(surface_file: str, single_file: str, atmospheric_dataset:
     )
 
 
+def load_world_bank_data(filepath: str) -> pd.DataFrame:
+    """
+    Load files from world bank, like forestry, agriculture, land data from a CSV file
+    and return it as a DataFrame.
+    """
+    data = pd.read_csv(filepath)
+    return data
+
+
 def load_era5_files_grouped_by_date(directory: str) -> List[Tuple[str, str, str]]:
     """
     Load ERA5 files from the directory and group them by date (pressure, single, surface).

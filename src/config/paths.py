@@ -8,6 +8,11 @@ STORAGE_DIR = Path("/data/projects/biodt/storage")
 
 LIFE_DIR = DATA_DIR / "Life"
 ERA5_DIR = DATA_DIR / "Copernicus/ERA5"
+LAND_DIR = DATA_DIR / "Land"
+NDVI_DIR = DATA_DIR / "Copernicus/NDVI"
+REDLIST_DIR = DATA_DIR / "RedList"
+AGRICULTURE_DIR = DATA_DIR / "Agriculture"
+FOREST_DIR = DATA_DIR / "Forest"
 
 TEST_DATA_DIR = STORAGE_DIR / "test_data"
 BATCHES_DATA_DIR = STORAGE_DIR / "batches"
@@ -35,10 +40,12 @@ XENO_CANTO_PROCESSED_LOG_FILE = (
 
 LPI_FILE = STORAGE_DIR / "dataset_files" / "Living_Planet_Index" / "LPD2022_public.csv"
 
-ONLY_IMGS_PATHS = STORAGE_DIR / "folders_with_only_jpg.txt"
-ALL_MOD_PATHS = STORAGE_DIR / "matching_directories.txt"
+ONLY_IMGS_PATHS = (
+    STORAGE_DIR / "folders_with_jpg_no_wav_no_edna_no_distribution_no_description.txt"
+)
+MODALITY_FOLDER_DIR = STORAGE_DIR / "modality_folder_lists"
 
-TIMESTAMPS = STORAGE_DIR / "sorted_timestamps.csv"
+TIMESTAMPS = STORAGE_DIR / "processed_data" / "timestamps" / "sorted_timestamps.csv"
 
 STATISTICS_DIR = STORAGE_DIR / "statistics"
 
@@ -49,3 +56,25 @@ SPECIES_OCCURRENCES_FILE = (
     / "Species_Occurrences"
     / "Netherlands_France_2017-2020.csv"
 )
+
+RED_LIST_FILE = STORAGE_DIR / "dataset_files" / "Red_List" / "red_list_index.csv"
+
+AGRICULTURE_LAND_FILE = (
+    STORAGE_DIR / "dataset_files" / "World_Bank" / "agricultural_land_1961_2021.csv"
+)
+AGRICULTURE_IRR_LAND_FILE = (
+    STORAGE_DIR
+    / "dataset_files"
+    / "World_Bank"
+    / "agricultural_irrigated_land_2001_2021.csv"
+)
+ARABLE_LAND_FILE = (
+    STORAGE_DIR / "dataset_files" / "World_Bank" / "arable_land_1961_2021.csv"
+)
+FOREST_LAND_FILE = (
+    STORAGE_DIR / "dataset_files" / "World_Bank" / "forest_land_1990_2021.csv"
+)
+PERMANENT_CROPLAND_FILE = (
+    STORAGE_DIR / "dataset_files" / "World_Bank" / "permanent_cropland_1961_2021.csv"
+)
+LAND_FILE = STORAGE_DIR / "dataset_files" / "World_Bank" / "land_area_1961_2021.csv"

@@ -19,7 +19,7 @@ class BOLDDownloader(Downloader):
             data_dir (str): Directory path for storing downloaded data.
         """
         super().__init__(data_dir, "Life")
-        self.base_url = "https://www.boldsystems.org/index.php/API_Public/combined"
+        self.base_url = "https://v4.boldsystems.org/index.php/API_Public/combined"
 
     def get_bold_data(self, query: str, is_species: bool = False) -> None:
         """
@@ -124,6 +124,12 @@ class BOLDDownloader(Downloader):
             sequence_id = sequence_info.get("sequenceID", "Unknown")
             nucleotides = sequence_info.get("nucleotides", "Unknown")
 
+            tracefiles = record_data.get("tracefiles", {}).get("read", [])
+            if not tracefiles:
+                timestamp = "Uknown"
+            else:
+                timestamp = tracefiles[0].get("run_date", "Unknown")
+
             data = [
                 {
                     "Record_id": record_id,
@@ -137,6 +143,7 @@ class BOLDDownloader(Downloader):
                     "Country": country,
                     "Latitude": lat,
                     "Longitude": lon,
+                    "Timestamp": timestamp,
                     "Sequence_id": sequence_id,
                     "Nucleotides": nucleotides,
                 }
@@ -156,7 +163,7 @@ class BOLDDownloader(Downloader):
 
         """
         species_names = extract_species_names(ONLY_IMGS_PATHS)
-        species_names_to_process = species_names[853:]
+        species_names_to_process = species_names
         for scientific_name in species_names_to_process:
             print(f"Processing species: {scientific_name}")
             self.download(scientific_name)

@@ -278,6 +278,15 @@ class ERA5Downloader(Downloader):
                         self.date = date_part
                         self.time = time_part
                         for level in levels:
+
+                            file_path = f"{ERA5_DIR}/ERA5-Reanalysis-{level}-{self.date}-{self.date}.nc"
+
+                            if os.path.exists(file_path):
+                                print(
+                                    f"File for {level} on {self.date} already exists. Skipping download."
+                                )
+                                continue
+
                             futures.append(
                                 executor.submit(
                                     self.get_data, level, self.date, self.date

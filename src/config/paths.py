@@ -45,16 +45,14 @@ ONLY_IMGS_PATHS = (
 )
 MODALITY_FOLDER_DIR = STORAGE_DIR / "modality_folder_lists"
 
-TIMESTAMPS = STORAGE_DIR / "processed_data" / "timestamps" / "sorted_timestamps.csv"
+TIMESTAMPS = (
+    STORAGE_DIR / "processed_data" / "timestamps" / "sorted_timestamps_2000_2024.csv"
+)
 
 STATISTICS_DIR = STORAGE_DIR / "statistics"
 
 SPECIES_OCCURRENCES_FILE = (
-    STORAGE_DIR
-    / "dataset_files"
-    / "GBIF"
-    / "Species_Occurrences"
-    / "Netherlands_France_2017-2020.csv"
+    STORAGE_DIR / "dataset_files" / "GBIF" / "Species_Occurrences" / ".csv"
 )
 
 RED_LIST_FILE = STORAGE_DIR / "dataset_files" / "Red_List" / "red_list_index.csv"
@@ -78,3 +76,14 @@ PERMANENT_CROPLAND_FILE = (
     STORAGE_DIR / "dataset_files" / "World_Bank" / "permanent_cropland_1961_2021.csv"
 )
 LAND_FILE = STORAGE_DIR / "dataset_files" / "World_Bank" / "land_area_1961_2021.csv"
+
+SPECIES_DATASET = STORAGE_DIR / "processed_data" / "species_dataset1.parquet"
+
+AGRICULTURE_COMBINED_FILE = (
+    DATA_DIR / "Agriculture" / "Europe_combined_agriculture_data.csv"
+)
+
+SPECIES_EXTINCTION_FILE = DATA_DIR / "RedList" / "Europe_red_list_index.csv"
+
+FOREST_FILE = DATA_DIR / "Forest" / "Europe_forest_data.csv"
+LAND_COMBINED_FILE = DATA_DIR / "Land" / "Europe_combined_land_data.csv"

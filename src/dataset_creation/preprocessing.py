@@ -259,66 +259,86 @@ def initialize_climate_tensors(
     lon_range: np.ndarray,
     T: int,
     pressure_levels: int = 13,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for surface, atmospheric, and single variables based on the dataset's variables.
+    Create tensors for surface, atmospheric, and single variables based on the dataset's variables, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
         pressure_levels (int): Number of pressure levels for atmospheric variables.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, Dict[str, torch.Tensor]]: Dictionary of empty tensors for climate data.
+        Dict[str, Dict[str, torch.Tensor]]: Dictionary of initialized tensors for climate data.
     """
 
     return {
         "surface": {
-            "t2m": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
-            "msl": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
-            "u10": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
-            "v10": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "t2m": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "msl": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "u10": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "v10": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
         },
         "single": {
-            "z": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
-            "lsm": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
-            "slt": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float32),
+            "z": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "lsm": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "slt": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
         },
         "atmospheric": {
-            "z": torch.empty(
-                T,
-                pressure_levels,
-                len(lat_range),
-                len(lon_range),
+            "z": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
                 dtype=torch.float32,
             ),
-            "t": torch.empty(
-                T,
-                pressure_levels,
-                len(lat_range),
-                len(lon_range),
+            "t": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
                 dtype=torch.float32,
             ),
-            "u": torch.empty(
-                T,
-                pressure_levels,
-                len(lat_range),
-                len(lon_range),
+            "u": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
                 dtype=torch.float32,
             ),
-            "v": torch.empty(
-                T,
-                pressure_levels,
-                len(lat_range),
-                len(lon_range),
+            "v": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
                 dtype=torch.float32,
             ),
-            "q": torch.empty(
-                T,
-                pressure_levels,
-                len(lat_range),
-                len(lon_range),
+            "q": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
                 dtype=torch.float32,
             ),
         },
@@ -326,126 +346,177 @@ def initialize_climate_tensors(
 
 
 def initialize_species_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for species data.
+    Create tensors for species data, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of empty tensors for species data.
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for species data.
     """
     return {
-        "Species": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        # "Image": torch.empty(T, len(lat_range), len(lon_range), 3, 64, 64),
-        # "Audio": torch.empty(T, len(lat_range), len(lon_range), 1, 13, 1),
-        "Description": torch.empty(T, len(lat_range), len(lon_range), 1, 64, 64),
-        # "eDNA": torch.empty(T, len(lat_range), len(lon_range), 256),
-        "Phylum": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Class": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Order": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Family": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Genus": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Redlist": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "Distribution": torch.empty(
-            T, len(lat_range), len(lon_range), dtype=torch.float16
+        "Species": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        # "Image": torch.full(T, len(lat_range), len(lon_range), 3, 64, 64) placeholder_value, dtype=torch.float16),
+        # "Audio": torch.full(T, len(lat_range), len(lon_range), 1, 13, 1) placeholder_value, dtype=torch.float16),
+        "Description": torch.full(
+            (T, len(lat_range), len(lon_range), 1, 64, 64),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        # "eDNA": torch.full(T, len(lat_range), len(lon_range), 256) placeholder_value, dtype=torch.float16),
+        "Phylum": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Class": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Order": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Family": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Genus": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Redlist": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Distribution": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
     }
 
 
 def initialize_species_extinction_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for extinct species data.
+    Create tensors for extinct species data, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of empty tensors for extinct pecies data.
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for extinct species data.
     """
     return {
-        "ExtinctionValue": torch.empty(
-            T, len(lat_range), len(lon_range), dtype=torch.float16
+        "ExtinctionValue": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
     }
 
 
 def initialize_land_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for land data.
+    Create tensors for land data, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of empty tensors for ndvi data.
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for land data.
     """
     return {
-        "Land": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
-        "NDVI": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Land": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "NDVI": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
     }
 
 
 def initialize_agriculture_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for agriculture data.
+    Create tensors for agriculture data, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of empty tensors for agriculture data.
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for agriculture data.
     """
     return {
-        "AgricultureLand": torch.empty(
-            T, len(lat_range), len(lon_range), dtype=torch.float16
+        "AgricultureLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
-        "AgricultureIrrLand": torch.empty(
-            T, len(lat_range), len(lon_range), dtype=torch.float16
+        "AgricultureIrrLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
-        "ArableLand": torch.empty(
-            T, len(lat_range), len(lon_range), dtype=torch.float16
+        "ArableLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
-        "Cropland": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Cropland": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
     }
 
 
 def initialize_forest_tensors(
-    lat_range: np.ndarray, lon_range: np.ndarray, T: int
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
 ) -> Dict[str, torch.Tensor]:
     """
-    Create empty tensors for forest data.
+    Create tensors for forest data, initialized with a placeholder value (NaN by default).
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of empty tensors for forest data.
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for forest data.
     """
     return {
-        "Forest": torch.empty(T, len(lat_range), len(lon_range), dtype=torch.float16),
+        "Forest": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
     }
 
 
-def reset_climate_tensors(surfaces_variables, single_variables, atmospheric_variables):
+def reset_climate_tensors(
+    surfaces_variables: dict,
+    single_variables: dict,
+    atmospheric_variables: dict,
+    placeholder_value: float,
+):
     """
     Reset the climate-related tensors to zero. This function iterates over the dictionary of variables
     and sets each tensor to zero, ensuring that no previous values remain for further computations.
@@ -454,28 +525,28 @@ def reset_climate_tensors(surfaces_variables, single_variables, atmospheric_vari
         surfaces_variables (dict): Dictionary of surface variable tensors.
         single_variables (dict): Dictionary of single-level variable tensors.
         atmospheric_variables (dict): Dictionary of atmospheric variable tensors.
+        placeholder_value (float): Value to reset tensors with. Default is NaN.
     """
     for var_name, tensor in surfaces_variables.items():
-        surfaces_variables[var_name] = torch.empty_like(tensor)
+        surfaces_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
     for var_name, tensor in single_variables.items():
-        single_variables[var_name] = torch.empty_like(tensor)
+        single_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
     for var_name, tensor in atmospheric_variables.items():
-        atmospheric_variables[var_name] = torch.empty_like(tensor)
+        atmospheric_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
 
-def reset_tensors(variables):
+def reset_tensors(variables: dict, placeholder_value: float = float("nan")):
     """
-    Reset the tensors to zero. For tensors with more than two dimensions,
-    the function sets all values to zero. For lower-dimensional tensors (e.g., vectors or matrices),
-    the behavior is the same.
+    Reset the tensors to the placeholder value. This function sets all values to the specified placeholder (NaN by default).
 
     Args:
-        species_variables (dict): Dictionary of tensors.
+        variables (dict): Dictionary of tensors.
+        placeholder_value (float): Value to reset tensors with. Default is NaN.
     """
     for var_name, tensor in variables.items():
-        variables[var_name] = torch.empty_like(tensor)
+        variables[var_name] = torch.full_like(tensor, placeholder_value)
 
 
 def preprocess_era5(

@@ -179,3 +179,22 @@ def normalise_audio(waveform: torch.Tensor) -> torch.Tensor:
     waveform -= waveform.mean()
     waveform /= waveform.abs().max()
     return waveform
+
+
+def resize_audio_tensor(
+    audio_tensor: torch.Tensor, target_shape: tuple
+) -> torch.Tensor:
+    """
+    Pads or truncates an audio tensor to the target shape, aligning it to the specified length.
+
+    Args:
+        audio_tensor (torch.Tensor): The input audio tensor with shape (1, length, 1).
+        target_shape (tuple): The desired shape for the audio (e.g., (1, 13, 1)).
+
+    Returns:
+        torch.Tensor: The resized or padded audio tensor.
+    """
+    padded_audio = torch.zeros(target_shape)
+    length = min(audio_tensor.size(-2), target_shape[-2])
+    padded_audio[..., :length, :] = audio_tensor[..., :length, :]
+    return padded_audio

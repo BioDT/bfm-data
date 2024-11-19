@@ -115,3 +115,20 @@ def reduce_embedding_dimensions(
     pca = PCA(n_components=output_dim)
     reduced_embeddings = pca.fit_transform(embeddings.cpu().numpy())
     return torch.tensor(reduced_embeddings)
+
+
+def resize_generic_tensor(tensor: torch.Tensor, target_shape: tuple) -> torch.Tensor:
+    """
+    Pads or truncates a generic tensor to match the specified target shape.
+
+    Args:
+        tensor (torch.Tensor): The input tensor to resize.
+        target_shape (tuple): The target shape for the tensor.
+
+    Returns:
+        torch.Tensor: The resized or padded tensor.
+    """
+    padded_tensor = torch.zeros(target_shape)
+    slices = tuple(slice(0, min(s, t)) for s, t in zip(tensor.shape, target_shape))
+    padded_tensor[slices] = tensor[slices]
+    return padded_tensor

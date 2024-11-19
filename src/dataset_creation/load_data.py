@@ -9,6 +9,10 @@ import pandas as pd
 import torch
 import xarray as xr
 
+from src.data_preprocessing.preprocessing import preprocess_audio, preprocess_image
+from src.data_preprocessing.transformation.audio import resize_audio_tensor
+from src.data_preprocessing.transformation.image import resize_image_tensor
+from src.data_preprocessing.transformation.text import resize_generic_tensor
 from src.dataset_creation.batch import DataBatch
 
 
@@ -75,36 +79,80 @@ def load_era5_files_grouped_by_date(directory: str) -> List[Tuple[str, str, str]
     return grouped_files
 
 
-def load_species_data(species_file: str):
+def resize_to_target(data, target_shape: tuple) -> torch.Tensor:
     """
-    Load species data from a Parquet file and process the multimodal data.
-
-    This function reads the species dataset from a Parquet file, processes the data by deserializing arrays,
-    and extracts timestamps. The deserialization of arrays converts string-encoded data back into
-    their original array form with the expected shapes for images, audio, and other fields.
+    Resizes or pads data to match the target shape, handling image, audio, and generic tensor data.
 
     Args:
-        species_file (str): Path to the Parquet file containing species data.
+        data (torch.Tensor or np.ndarray): The input data to resize.
+        target_shape (tuple): The desired shape (e.g., (3, 64, 64) for images).
 
     Returns:
-        pd.DataFrame: A DataFrame containing the processed species data with deserialized arrays.
+        torch.Tensor: The data resized or padded to the target shape.
+
+    Raises:
+        TypeError: If the data type is unsupported for resizing.
+    """
+    if isinstance(data, torch.Tensor):
+        if data.dim() == 3 and data.shape[0] == 3:
+            return resize_image_tensor(data, target_shape)
+
+        elif data.dim() == 3 and target_shape[-1] == 1:
+            return resize_audio_tensor(data, target_shape)
+
+        else:
+            return resize_generic_tensor(data, target_shape)
+
+    elif isinstance(data, np.ndarray):
+        return resize_to_target(torch.tensor(data), target_shape)
+
+    else:
+        raise TypeError("Unsupported data type for resizing")
+
+
+def load_species_data(species_file: str) -> pd.DataFrame:
+    """
+    Loads and processes species data from a Parquet file, deserializing multimodal data fields
+    and resizing them to consistent shapes if necessary.
+
+    This function reads a Parquet file containing species data, deserializes base64-encoded arrays,
+    and applies reshaping to standardize data shapes for images, audio, descriptions, and eDNA.
+
+    Args:
+        species_file (str): Path to the Parquet file containing serialized species data.
+
+    Returns:
+        pd.DataFrame: A DataFrame with the processed species data, including deserialized
+                      arrays with consistent shapes.
     """
     species_dataset = pd.read_parquet(species_file)
 
     species_dataset["Image"] = species_dataset["Image"].apply(
-        lambda x: deserialize_array(x, (3, 64, 64)) if isinstance(x, str) else x
+        lambda x: resize_to_target(
+            deserialize_array(x, [(3, 64, 64), (3, 128, 128)]), (3, 64, 64)
+        )
+        if isinstance(x, str)
+        else x
     )
 
     species_dataset["Audio"] = species_dataset["Audio"].apply(
-        lambda x: deserialize_array(x, (1, 13, 1)) if isinstance(x, str) else x
+        lambda x: resize_to_target(deserialize_array(x, [(1, 13, 1)]), (1, 13, 1))
+        if isinstance(x, str)
+        else x
     )
 
     species_dataset["Description"] = species_dataset["Description"].apply(
-        lambda x: deserialize_array(x, (64, 64)) if isinstance(x, str) else x
+        lambda x: resize_to_target(
+            deserialize_array(x, [(64, 64), (128,)]), (1, 64, 64)
+        )
+        if isinstance(x, str)
+        else x
     )
 
     species_dataset["eDNA"] = species_dataset["eDNA"].apply(
-        lambda x: deserialize_array(x, (256,)) if isinstance(x, str) else x
+        lambda x: resize_to_target(deserialize_array(x, [(256,)]), (256,))
+        if isinstance(x, str)
+        else x
     )
 
     species_dataset["Timestamp"] = species_dataset["Timestamp"].apply(extract_timestamp)
@@ -112,23 +160,51 @@ def load_species_data(species_file: str):
     return species_dataset
 
 
-def deserialize_array(arr_str, shape):
+def deserialize_array(arr_str, expected_shapes, target_shape=None):
     """
-    Deserializes a base64-encoded string back into a tensor with the specified shape.
+    Deserializes a base64-encoded string back into a tensor and adjusts the shape if necessary.
 
     Args:
         arr_str (str): The base64-encoded string representing the array.
-        shape (tuple): The target shape for the tensor.
+        expected_shapes (list of tuples): List of possible shapes for the tensor.
+        target_shape (tuple, optional): Target shape to resize to if the deserialized array does not match expected shapes.
 
     Returns:
-        torch.Tensor: The deserialized tensor.
+        torch.Tensor: The deserialized and reshaped tensor.
+
+    Raises:
+        ValueError: If the deserialized array size does not match any of the expected shapes and no target shape is provided.
     """
     decoded = base64.b64decode(arr_str.encode("utf-8"))
-
     arr = np.frombuffer(decoded, dtype=np.float32)
-    reshaped_tensor = torch.tensor(arr).view(*shape)
+    for shape in expected_shapes:
+        if arr.size == np.prod(shape):
+            return torch.tensor(arr).view(*shape)
+    if target_shape:
+        print(f"Warning: Resizing from {arr.shape} to {target_shape}")
+        return torch.tensor(arr).reshape(*target_shape)
+    raise ValueError(f"Shape {arr.shape} did not match any expected {expected_shapes}")
 
-    return reshaped_tensor
+
+# def deserialize_array(arr_str, expected_shapes):
+#     """
+#     Deserializes a base64-encoded string back into a tensor with one of the specified shapes.
+
+#     Args:
+#         arr_str (str): The base64-encoded string representing the array.
+#         expected_shapes (list of tuples): The possible shapes for the tensor.
+
+#     Returns:
+#         torch.Tensor: The deserialized tensor.
+#     """
+#     decoded = base64.b64decode(arr_str.encode("utf-8"))
+#     arr = np.frombuffer(decoded, dtype=np.float32)
+
+#     for shape in expected_shapes:
+#         if isinstance(shape, tuple) and arr.size == np.prod(shape):
+#             return torch.tensor(arr).view(*shape)
+
+#     raise ValueError(f"Deserialized array size {arr.size} does not match any expected shapes {expected_shapes}.")
 
 
 def extract_timestamp(x):

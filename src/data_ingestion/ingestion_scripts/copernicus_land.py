@@ -60,25 +60,25 @@ class CopernicusLandDownloader:
         _, iso_codes = get_countries_by_continent(region)
         self.country_rectangles = get_bounding_boxes_for_countries(iso_codes)
 
-    def filter_january_files(self, file_urls: list) -> list:
+    def filter_11th_day_files(self, file_urls: list) -> list:
         """
-        Filters the list of URLs to get only the first file for January of each year.
+        Filters the list of URLs to get only the file for the 11th of each month.
 
         Args:
             file_urls (list): List of URLs to filter.
 
         Returns:
-            list: Filtered list containing only the first file for January.
+            list: Filtered list containing only files for the 11th of each month.
         """
-        january_files = []
+        eleventh_day_files = []
         for url in file_urls:
-            file_name = os.path.basename(url)
-            year_part = url.split("/")[-3]
 
-            if file_name.startswith(f"c_gls_NDVI_{year_part}0101"):
-                january_files.append(url)
+            year_month_day_part = url.split("/")[-2]
 
-        return january_files
+            if year_month_day_part.endswith("11"):
+                eleventh_day_files.append(url)
+
+        return eleventh_day_files
 
     def download_files(self, file_urls: list):
         """
@@ -110,7 +110,7 @@ class CopernicusLandDownloader:
         response = requests.get(self.links_url)
         if response.status_code == 200:
             file_urls = response.text.splitlines()
-            january_files = self.filter_january_files(file_urls)
+            january_files = self.filter_11th_day_files(file_urls)
 
             self.download_files(january_files)
         else:

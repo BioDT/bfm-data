@@ -26,7 +26,7 @@ DATA_DIR = f"{STORAGE_DIR}/data"
 
 era5_directory = f"{DATA_DIR}/Copernicus/ERA5"
 
-species_file = f"{STORAGE_DIR}/processed_data/species_dataset1.parquet"
+# species_file = f"{STORAGE_DIR}/processed_data/species_dataset1.parquet"
 agriculture_file = f"{DATA_DIR}/Agriculture/Europe_combined_agriculture_data.csv"
 land_file = f"{DATA_DIR}/Land/Europe_combined_land_data.csv"
 forest_file = f"{DATA_DIR}/Forest/Europe_forest_data.csv"
@@ -90,7 +90,7 @@ def run_single(index: int):
     single_dataset_day2 = selected["day_2"]["single"]
     surface_dataset_day2 = selected["day_2"]["surface"]
 
-    species_dataset = load_species_data(species_file)
+    # species_dataset = load_species_data(species_file)
     agriculture_dataset = load_world_bank_data(agriculture_file)
     land_dataset = load_world_bank_data(land_file)
     forest_dataset = load_world_bank_data(forest_file)
@@ -103,7 +103,7 @@ def run_single(index: int):
         atmospheric_dataset_day2,
         single_dataset_day2,
         surface_dataset_day2,
-        species_dataset,
+        # species_dataset,
         agriculture_dataset,
         forest_dataset,
         land_dataset,

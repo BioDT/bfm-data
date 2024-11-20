@@ -74,6 +74,7 @@ def bert_tokenizer(
     return bert_embeddings
 
 
+# TODO: Check it why 64x64
 def pad_or_truncate_embeddings(
     embeddings: torch.Tensor, target_length: int
 ) -> torch.Tensor:

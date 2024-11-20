@@ -20,21 +20,23 @@ class DataBatch:
     Represents a batch of data including surface, static, and atmospheric variables.
 
     Args:
-        surface_variables (Dict[str, torch.Tensor]): Dictionary of surface-level variables, where each tensor has shape `(b, t, h, w)`.
-        single_variables (Dict[str, torch.Tensor]): Dictionary of single variables, where each tensor has shape `(h, w)`.
-        atmospheric_variables (Dict[str, torch.Tensor]): Dictionary of atmospheric variables, where each tensor has shape `(b, t, c, h, w)`.
-        species_variables (Dict[str, torch.Tensor]): Dictionary of species variables, where each tensor has shape `(b, t, c, h, w)`.
-        species_extinction_variables (Dict[str, torch.Tensor]): Dictionary of species extinction variables, where each tensor has shape `(b, t, c, h, w)`.
-        land_variables (Dict[str, torch.Tensor]): Dictionary of land variables, where each tensor has shape `(b, t, c, h, w)`.
-        agriculture_variables (Dict[str, torch.Tensor]): Dictionary of agriculture variables, where each tensor has shape `(b, t, c, h, w)`.
-        forest_variables (Dict[str, torch.Tensor]): Dictionary of forest variables, where each tensor has shape `(b, t, c, h, w)`.
+        surface_variables (Dict[str, torch.Tensor]): Dictionary of surface-level variables, where each tensor has shape `(t, h, w)`.
+        single_variables (Dict[str, torch.Tensor]): Dictionary of single variables, where each tensor has shape `(t, h, w)`.
+        atmospheric_variables (Dict[str, torch.Tensor]): Dictionary of atmospheric variables, where each tensor has shape `(t, c, h, w)`.
+        species_variables (Dict[str, torch.Tensor]): Dictionary of species variables, where each tensor has shape `(t, h, w)`.
+        species_distribution_variables (Dict[str, torch.Tensor]): Dictionary of species distribution variables, where each tensor has shape `(t, h, w)`.
+        species_extinction_variables (Dict[str, torch.Tensor]): Dictionary of species extinction variables, where each tensor has shape `(t, h, w)`.
+        land_variables (Dict[str, torch.Tensor]): Dictionary of land variables, where each tensor has shape `(t, h, w)`.
+        agriculture_variables (Dict[str, torch.Tensor]): Dictionary of agriculture variables, where each tensor has shape `(t, h, w)`.
+        forest_variables (Dict[str, torch.Tensor]): Dictionary of forest variables, where each tensor has shape `(t, h, w)`.
         batch_metadata (Metadata): Metadata associated with this batch, containing information such as latitudes, longitudes, and time.
     """
 
     surface_variables: Dict[str, torch.Tensor]
     single_variables: Dict[str, torch.Tensor]
     atmospheric_variables: Dict[str, torch.Tensor]
-    species_variables: Dict[str, torch.Tensor]
+    # species_variables: Dict[str, torch.Tensor]
+    # species_distribution_variables: Dict[str, torch.Tensor]
     species_extinction_variables: Dict[str, torch.Tensor]
     land_variables: Dict[str, torch.Tensor]
     agriculture_variables: Dict[str, torch.Tensor]
@@ -71,9 +73,12 @@ class DataBatch:
         atmospheric_variables = {
             key: f(value) for key, value in self.atmospheric_variables.items()
         }
-        species_variables = {
-            key: f(value) for key, value in self.species_variables.items()
-        }
+        # species_variables = {
+        #     key: f(value) for key, value in self.species_variables.items()
+        # }
+        # species_distribution_variables = {
+        #     key: f(value) for key, value in self.species_distribution_variables.items()
+        # }
         species_extinction_variables = {
             key: f(value) for key, value in self.species_extinction_variables.items()
         }
@@ -89,7 +94,8 @@ class DataBatch:
             surface_variables=surface_variables,
             single_variables=single_variables,
             atmospheric_variables=atmospheric_variables,
-            species_variables=species_variables,
+            # species_variables=species_variables,
+            # species_distribution_variables=species_distribution_variables,
             species_extinction_variables=species_extinction_variables,
             land_variables=land_variables,
             agriculture_variables=agriculture_variables,
@@ -159,7 +165,8 @@ class DataBatch:
             surface_variables=normalized_surface_variables,
             single_variables=normalized_single_variables,
             atmospheric_variables=normalized_atmospheric_variables,
-            species_variables=self.species_variables,
+            # species_variables=self.species_variables,
+            # species_distribution_variables=self.species_distribution_variables,
             species_extinction_variables=self.species_extinction_variables,
             land_variables=self.land_variables,
             agriculture_variables=self.agriculture_variables,
@@ -199,7 +206,8 @@ class DataBatch:
             surface_variables=unnormalized_surface_variables,
             single_variables=unnormalized_single_variables,
             atmospheric_variables=unnormalized_atmospheric_variables,
-            species_variables=self.species_variables,
+            # species_variables=self.species_variables,
+            # species_distribution_variables=self.species_distribution_variables,
             species_extinction_variables=self.species_extinction_variables,
             land_variables=self.land_variables,
             agriculture_variables=self.agriculture_variables,
@@ -238,10 +246,14 @@ class DataBatch:
                 key: value[..., :new_height, :new_width]
                 for key, value in self.atmospheric_variables.items()
             }
-            cropped_species = {
-                key: value[..., :new_height, :new_width]
-                for key, value in self.species_variables.items()
-            }
+            # cropped_species = {
+            #     key: value[..., :new_height, :new_width]
+            #     for key, value in self.species_variables.items()
+            # }
+            # cropped_species_distribution = {
+            #     key: value[..., :new_height, :new_width]
+            #     for key, value in self.species_distribution_variables.items()
+            # }
             cropped_species_extinction = {
                 key: value[..., :new_height, :new_width]
                 for key, value in self.species_extinction_variables.items()
@@ -262,7 +274,8 @@ class DataBatch:
                 surface_variables=cropped_surface,
                 single_variables=cropped_static,
                 atmospheric_variables=cropped_atmospheric,
-                species_variables=cropped_species,
+                # species_variables=cropped_species,
+                # species_distribution_variables=cropped_species_distribution,
                 species_extinction_variables=cropped_species_extinction,
                 land_variables=cropped_land,
                 agriculture_variables=cropped_agriculture,
@@ -289,10 +302,14 @@ class DataBatch:
                 key: torch.nn.functional.pad(value, padding)
                 for key, value in self.atmospheric_variables.items()
             }
-            padded_species = {
-                key: torch.nn.functional.pad(value, padding)
-                for key, value in self.species_variables.items()
-            }
+            # padded_species = {
+            #     key: torch.nn.functional.pad(value, padding)
+            #     for key, value in self.species_variables.items()
+            # }
+            # padded_species_distribution = {
+            #     key: torch.nn.functional.pad(value, padding)
+            #     for key, value in self.species_distribution_variables.items()
+            # }
             padded_species_extinction = {
                 key: torch.nn.functional.pad(value, padding)
                 for key, value in self.species_extinction_variables.items()
@@ -314,7 +331,8 @@ class DataBatch:
                 surface_variables=padded_surface,
                 single_variables=padded_static,
                 atmospheric_variables=padded_atmospheric,
-                species_variables=padded_species,
+                # species_variables=padded_species,
+                # species_distribution_variables=padded_species_distribution,
                 species_extinction_variables=padded_species_extinction,
                 land_variables=padded_land,
                 agriculture_variables=padded_agriculture,

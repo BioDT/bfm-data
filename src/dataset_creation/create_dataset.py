@@ -1,13 +1,15 @@
 # src/data_creation/create_dataset.py
 
 import os
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
 
-from src.config.paths import BATCHES_DATA_DIR
+from src.config import paths
 from src.data_preprocessing.transformation.era5 import get_mean_standard_deviation
 from src.dataset_creation.batch import DataBatch
 from src.dataset_creation.load_data import (
@@ -27,6 +29,7 @@ from src.dataset_creation.preprocessing import (
     initialize_species_tensors,
     merge_timestamps,
     preprocess_era5,
+    process_netcdf_files,
     rescale_sort_lat_lon,
     reset_climate_tensors,
     reset_tensors,
@@ -40,7 +43,8 @@ def create_batch(
     surface_dataset: xr.Dataset,
     single_dataset: xr.Dataset,
     atmospheric_dataset: xr.Dataset,
-    species_dataset: pd.DataFrame,
+    # species_dataset: pd.DataFrame,
+    # species_distribution_dataset: pd.DataFrame,
     species_extinction_dataset: pd.DataFrame,
     land_dataset: pd.DataFrame,
     agriculture_dataset: pd.DataFrame,
@@ -48,7 +52,8 @@ def create_batch(
     surfaces_variables: dict,
     single_variables: dict,
     atmospheric_variables: dict,
-    species_variables: dict,
+    # species_variables: dict,
+    # species_distribution_variables: dict,
     species_extinction_variables: dict,
     land_variables: dict,
     agriculture_variables: dict,
@@ -87,25 +92,30 @@ def create_batch(
         surface_dataset, single_dataset, atmospheric_dataset
     )
 
-    pressure_levels = tuple(
-        int(level) for level in atmospheric_dataset.pressure_level.values
-    )
-
+    # pressure_levels = tuple(
+    #     int(level) for level in atmospheric_dataset.pressure_level.values
+    # )
+    pressure_levels = (1000, 50)
+    print(pressure_levels)
+    print(dates)
     for t, current_date in enumerate(dates):
+        print(t)
+        print(current_date)
 
         try:
             surface_variables_by_day = surface_dataset.sel(
-                valid_time=current_date[0], method="nearest"
+                valid_time=current_date, method="nearest"
             ).load()
             single_variables_by_day = single_dataset.sel(
-                valid_time=current_date[0], method="nearest"
+                valid_time=current_date, method="nearest"
             ).load()
             atmospheric_variables_by_day = atmospheric_dataset.sel(
-                valid_time=current_date[0], method="nearest"
+                valid_time=current_date, method="nearest"
             ).load()
-            pressure_levels = tuple(
-                int(level) for level in atmospheric_dataset.pressure_level.values
-            )
+            # pressure_levels = tuple(
+            #     int(level) for level in atmospheric_dataset.pressure_level.values
+            # )
+            pressure_levels = (1000, 50)
             has_climate_data = True
         except KeyError:
             surface_variables_by_day = None
@@ -115,8 +125,8 @@ def create_batch(
         if has_climate_data:
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):
-
-                    for var_name in ["t2m", "msl", "u10", "v10"]:
+                    # TODO: add the extra variables
+                    for var_name in ["t2m", "msl"]:
                         var_value = (
                             surface_variables_by_day[var_name]
                             .sel(latitude=lat, longitude=lon, method="nearest")
@@ -124,94 +134,103 @@ def create_batch(
                         )
                         surfaces_variables[var_name][
                             t, lat_idx, lon_idx
-                        ] = torch.tensor(var_value.item())
+                        ] = torch.tensor(
+                            var_value.item() if not np.isnan(var_value) else 0.0
+                        )
 
-                    for var_name in ["z", "lsm", "slt"]:
+                    for var_name in ["z", "lsm"]:
                         var_value = (
                             single_variables_by_day[var_name]
                             .sel(latitude=lat, longitude=lon, method="nearest")
                             .values
                         )
                         single_variables[var_name][t, lat_idx, lon_idx] = torch.tensor(
-                            var_value.item()
+                            var_value.item() if not np.isnan(var_value) else 0.0
                         )
 
-                    for var_name in ["z", "t", "u", "v", "q"]:
-                        var_value = (
-                            atmospheric_variables_by_day[var_name]
-                            .sel(latitude=lat, longitude=lon, method="nearest")
-                            .values
-                        )
-                        if var_name not in atmospheric_variables:
-                            atmospheric_variables[var_name][
-                                t, lat_idx, lon_idx
-                            ] = torch.tensor(var_value.item())
-
-        try:
-            species_variables_by_day = species_dataset[
-                species_dataset["Timestamp"].apply(
-                    lambda x: x[0] if x is not None else None
-                )
-                == pd.Timestamp(current_date[0])
-            ]
-            has_species_data = True
-        except KeyError:
-            species_variables_by_day = None
-            has_species_data = False
-
-        if has_species_data:
-            for lat_idx, lat in enumerate(lat_range):
-                for lon_idx, lon in enumerate(lon_range):
-                    species_at_location = species_variables_by_day[
-                        (species_variables_by_day["Latitude"] == lat)
-                        & (species_variables_by_day["Longitude"] == lon)
-                    ]
-
-                    if not species_at_location.empty:
-                        species_entry = species_at_location.iloc[0]
-
-                        species_variables["Species"][
-                            t, lat_idx, lon_idx
-                        ] = torch.tensor(species_entry["Species"], dtype=torch.float16)
-
-                        # species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
-                        #     "Image"
-                        # ]
-
-                        # species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
-                        #     "Audio"
-                        # ]
-
-                        species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
-                            "eDNA"
-                        ]
-
-                        species_variables["Description"][
-                            t, lat_idx, lon_idx
-                        ] = species_entry["Description"]
-
-                        species_variables["Distribution"][
-                            t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            species_entry["Distribution"], dtype=torch.float16
-                        )
-
-                        for category in [
-                            "Phylum",
-                            "Class",
-                            "Order",
-                            "Family",
-                            "Genus",
-                            "Redlist",
-                        ]:
-                            species_variables[category][
-                                t, lat_idx, lon_idx
-                            ] = torch.tensor(
-                                species_entry[category], dtype=torch.float16
+                    for var_name in ["z", "u", "v"]:
+                        for p_idx, pressure_level in enumerate(pressure_levels):
+                            var_value = (
+                                atmospheric_variables_by_day[var_name]
+                                .sel(
+                                    latitude=lat,
+                                    longitude=lon,
+                                    pressure_level=pressure_level,
+                                    method="nearest",
+                                )
+                                .values
                             )
 
-        year = pd.Timestamp(current_date[0]).year
+                            atmospheric_variables[var_name][
+                                t, p_idx, lat_idx, lon_idx
+                            ] = torch.tensor(
+                                var_value.item() if not np.isnan(var_value) else 0.0
+                            )
 
+        # try:
+        #     species_variables_by_day = species_dataset[
+        #         species_dataset["Timestamp"].apply(
+        #             lambda x: x[0] if x is not None else None
+        #         )
+        #         == pd.Timestamp(current_date[0])
+        #     ]
+        #     has_species_data = True
+        # except KeyError:
+        #     species_variables_by_day = None
+        #     has_species_data = False
+
+        # if has_species_data:
+        #     for lat_idx, lat in enumerate(lat_range):
+        #         for lon_idx, lon in enumerate(lon_range):
+        #             species_at_location = species_variables_by_day[
+        #                 (species_variables_by_day["Latitude"] == lat)
+        #                 & (species_variables_by_day["Longitude"] == lon)
+        #             ]
+
+        #             if not species_at_location.empty:
+        #                 species_entry = species_at_location.iloc[0]
+
+        #                 species_variables["Species"][
+        #                     t, lat_idx, lon_idx
+        #                 ] = torch.tensor(species_entry["Species"], dtype=torch.float16)
+
+        #                 # species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
+        #                 #     "Image"
+        #                 # ]
+
+        #                 # species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
+        #                 #     "Audio"
+        #                 # ]
+
+        #                 species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
+        #                     "eDNA"
+        #                 ]
+
+        #                 species_variables["Description"][
+        #                     t, lat_idx, lon_idx
+        #                 ] = species_entry["Description"]
+
+        #                 species_variables["Distribution"][
+        #                     t, lat_idx, lon_idx
+        #                 ] = torch.tensor(
+        #                     species_entry["Distribution"], dtype=torch.float16
+        #                 )
+
+        #                 for category in [
+        #                     "Phylum",
+        #                     "Class",
+        #                     "Order",
+        #                     "Family",
+        #                     "Genus",
+        #                     "Redlist",
+        #                 ]:
+        #                     species_variables[category][
+        #                         t, lat_idx, lon_idx
+        #                     ] = torch.tensor(
+        #                         species_entry[category], dtype=torch.float16
+        #                     )
+
+        year = pd.Timestamp(current_date).year
         for lat_idx, lat in enumerate(lat_range):
             for lon_idx, lon in enumerate(lon_range):
 
@@ -293,13 +312,36 @@ def create_batch(
                             extinction_value.values[0], dtype=torch.float16
                         )
 
-    first_timestamp, *_ = dates[0]
+                # # Get all species distributions for the current lat/lon
+                # distribution_at_location = species_distribution_dataset[
+                #     (species_distribution_dataset["lat"] == lat)
+                #     & (species_distribution_dataset["lon"] == lon)
+                # ]
+
+                # if not distribution_at_location.empty:
+                #     for _, row in distribution_at_location.iterrows():
+                #         species_name = row["species"]  # Get the species name
+                #         if species_name not in species_distribution_variables:
+                #             # Initialize tensor for this species if not already present
+                #             species_distribution_variables[species_name] = torch.zeros(
+                #                 (t, len(lat_range), len(lon_range)), dtype=torch.float16
+                #             )
+                #         # Get the distribution value for the current year
+                #         distribution_value = row.get(str(year), pd.NA)
+                #         if distribution_value is not pd.NA:
+                #             species_distribution_variables[species_name][
+                #                 t, lat_idx, lon_idx
+                #             ] = torch.tensor(distribution_value, dtype=torch.float16)
+
+    first_timestamp = dates[0]
+    second_timestamp = dates[1]
 
     batch = DataBatch(
         surface_variables=surfaces_variables,
         single_variables=single_variables,
         atmospheric_variables=atmospheric_variables,
-        species_variables=species_variables,
+        # species_variables=species_variables,
+        # species_distribution_variables=species_distribution_variables,
         species_extinction_variables=species_extinction_variables,
         land_variables=land_variables,
         agriculture_variables=agriculture_variables,
@@ -307,7 +349,7 @@ def create_batch(
         batch_metadata=BatchMetadata(
             latitudes=torch.tensor(lat_range),
             longitudes=torch.tensor(lon_range),
-            timestamp=(first_timestamp,),
+            timestamp=(first_timestamp, second_timestamp),
             pressure_levels=pressure_levels,
         ),
     )
@@ -329,7 +371,7 @@ def create_batches(
     surface_dataset: xr.Dataset,
     single_dataset: xr.Dataset,
     atmospheric_dataset: xr.Dataset,
-    species_dataset: pd.DataFrame,
+    # species_dataset: pd.DataFrame,
     species_extinction_dataset: pd.DataFrame,
     land_dataset: pd.DataFrame,
     agriculture_dataset: pd.DataFrame,
@@ -350,9 +392,9 @@ def create_batches(
         list[DataBatch]: A list of DataBatch objects containing both climate and species data.
     """
 
-    species_dataset["Longitude"] = species_dataset["Longitude"].apply(
-        lambda lon: (lon + 360) % 360 if lon < 0 else lon
-    )
+    # species_dataset["Longitude"] = species_dataset["Longitude"].apply(
+    #     lambda lon: (lon + 360) % 360 if lon < 0 else lon
+    # )
 
     def initialize_data(crop_lat_n=None, crop_lon_n=None):
         """
@@ -375,14 +417,13 @@ def create_batches(
             )
 
         lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range)
-
         T = 2
         pressure_levels = 13
 
         climate_tensors = initialize_climate_tensors(
             lat_range, lon_range, T, pressure_levels
         )
-        species_tensors = initialize_species_tensors(lat_range, lon_range, T)
+        # species_tensors = initialize_species_tensors(lat_range, lon_range, T)
         species_extinction_tensors = initialize_species_extinction_tensors(
             lat_range, lon_range, T
         )
@@ -395,7 +436,7 @@ def create_batches(
             lat_range,
             lon_range,
             climate_tensors,
-            species_tensors,
+            # species_tensors,
             species_extinction_tensors,
             land_tensors,
             agriculture_tensors,
@@ -407,7 +448,7 @@ def create_batches(
         surfaces_variables,
         single_variables,
         atmospheric_variables,
-        species_variables,
+        # species_variables,
         species_extinction_variables,
         land_variables,
         agriculture_variables,
@@ -415,9 +456,9 @@ def create_batches(
     ):
         """Create a batch and save it to disk."""
 
-        date1 = timestamps[0][0].strftime("%Y-%m-%d")
-        date2 = timestamps[1][0].strftime("%Y-%m-%d")
-        batch_file = os.path.join(BATCHES_DATA_DIR, f"batch_{date1}_{date2}.pt")
+        date1 = timestamps[0].strftime("%Y-%m-%d")
+        date2 = timestamps[1].strftime("%Y-%m-%d")
+        batch_file = os.path.join(paths.BATCHES_DATA_DIR, f"batch_{date1}_{date2}.pt")
 
         print(batch_file)
 
@@ -432,7 +473,7 @@ def create_batches(
             surface_dataset=surface_dataset,
             single_dataset=single_dataset,
             atmospheric_dataset=atmospheric_dataset,
-            species_dataset=species_subset,
+            # species_dataset=species_subset,
             species_extinction_dataset=species_extinction_dataset,
             land_dataset=land_dataset,
             forest_dataset=forest_dataset,
@@ -440,7 +481,7 @@ def create_batches(
             surfaces_variables=surfaces_variables,
             single_variables=single_variables,
             atmospheric_variables=atmospheric_variables,
-            species_variables=species_variables,
+            # species_variables=species_variables,
             species_extinction_variables=species_extinction_variables,
             land_variables=land_variables,
             agriculture_variables=agriculture_variables,
@@ -455,7 +496,7 @@ def create_batches(
         lat_range,
         lon_range,
         climate_tensors,
-        species_tensors,
+        # species_tensors,
         species_extinction_tensors,
         land_tensors,
         agriculture_tensors,
@@ -464,7 +505,7 @@ def create_batches(
     surfaces_variables = climate_tensors["surface"]
     single_variables = climate_tensors["single"]
     atmospheric_variables = climate_tensors["atmospheric"]
-    species_variables = species_tensors
+    # species_variables = species_tensors
     species_extinction_variables = species_extinction_tensors
     land_variables = land_tensors
     agriculture_variables = agriculture_tensors
@@ -483,32 +524,38 @@ def create_batches(
         print(climate_timestamps)
         if climate_timestamps:
 
-            min_timestamp = min(climate_timestamps)
-            max_timestamp = max(climate_timestamps)
-
-            species_subset = species_dataset[
-                (
-                    species_dataset["Timestamp"].apply(
-                        lambda x: x[0] if isinstance(x, tuple) else x
-                    )
-                    >= min_timestamp
-                )
-                & (
-                    species_dataset["Timestamp"].apply(
-                        lambda x: x[0] if isinstance(x, tuple) else x
-                    )
-                    <= max_timestamp
-                )
+            sorted_timestamps: List[Tuple[datetime.datetime]] = [
+                (t) for t in sorted(climate_timestamps)
             ]
+            print(sorted_timestamps)
 
-            timestamps = merge_timestamps(surface_dataset, species_subset)
-            print(timestamps)
+            # min_timestamp = min(climate_timestamps)
+            # max_timestamp = max(climate_timestamps)
+
+            # species_subset = species_dataset[
+            #     (
+            #         species_dataset["Timestamp"].apply(
+            #             lambda x: x[0] if isinstance(x, tuple) else x
+            #         )
+            #         >= min_timestamp
+            #     )
+            #     & (
+            #         species_dataset["Timestamp"].apply(
+            #             lambda x: x[0] if isinstance(x, tuple) else x
+            #         )
+            #         <= max_timestamp
+            #     )
+            # ]
+
+            # timestamps = merge_timestamps(surface_dataset, species_subset)
+
             batch = create_and_save_batch(
-                timestamps[:2],
+                # timestamps[:2],
+                sorted_timestamps,
                 surfaces_variables,
                 single_variables,
                 atmospheric_variables,
-                species_variables,
+                # species_variables,
                 species_extinction_variables,
                 land_variables,
                 agriculture_variables,
@@ -518,40 +565,40 @@ def create_batches(
             if batch is not None:
                 return batch
 
-    elif load_type == "large-file":
-        timestamps = merge_timestamps(surface_dataset, species_dataset)
+        # elif load_type == "large-file":
+        #     timestamps = merge_timestamps(surface_dataset, species_dataset)
 
-        for i in range(len(timestamps) - 1):
-            timestamp_pair = timestamps[i : i + 2]
+        #     for i in range(len(timestamps) - 1):
+        #         timestamp_pair = timestamps[i : i + 2]
 
-            species_subset = species_dataset[
-                (species_dataset["Timestamp"] >= timestamp_pair[0])
-                & (species_dataset["Timestamp"] < timestamp_pair[1])
-            ]
+        #         species_subset = species_dataset[
+        #             (species_dataset["Timestamp"] >= timestamp_pair[0])
+        #             & (species_dataset["Timestamp"] < timestamp_pair[1])
+        #         ]
 
-            batch = create_and_save_batch(
-                timestamp_pair,
-                surfaces_variables,
-                single_variables,
-                atmospheric_variables,
-                species_variables,
-                species_extinction_variables,
-                land_variables,
-                agriculture_variables,
-                forest_variables,
-            )
+        #         batch = create_and_save_batch(
+        #             timestamp_pair,
+        #             surfaces_variables,
+        #             single_variables,
+        #             atmospheric_variables,
+        #             species_variables,
+        #             species_extinction_variables,
+        #             land_variables,
+        #             agriculture_variables,
+        #             forest_variables,
+        #         )
 
-            if batch is not None:
-                batches.append(batch)
+        #         if batch is not None:
+        #             batches.append(batch)
 
-            reset_climate_tensors(
-                surfaces_variables, single_variables, atmospheric_variables
-            )
-            reset_tensors(species_variables)
-            reset_tensors(species_extinction_variables)
-            reset_tensors(land_variables)
-            reset_tensors(agriculture_variables)
-            reset_tensors(forest_variables)
+        #         reset_climate_tensors(
+        #             surfaces_variables, single_variables, atmospheric_variables
+        #         )
+        #         reset_tensors(species_variables)
+        #         reset_tensors(species_extinction_variables)
+        #         reset_tensors(land_variables)
+        #         reset_tensors(agriculture_variables)
+        #         reset_tensors(forest_variables)
 
         return batches
 
@@ -587,7 +634,7 @@ def create_dataset(
     Returns:
         None.
     """
-    species_dataset = load_species_data(species_file)
+    # species_dataset = load_species_data(species_file)
     agriculture_dataset = load_world_bank_data(agriculture_file)
     land_dataset = load_world_bank_data(land_file)
     forest_dataset = load_world_bank_data(forest_file)
@@ -610,6 +657,21 @@ def create_dataset(
                 surface_dataset_day2,
             ) = grouped_files[i + 1]
 
+            valid_files = process_netcdf_files(
+                [
+                    atmospheric_dataset_day1,
+                    single_dataset_day1,
+                    surface_dataset_day1,
+                    atmospheric_dataset_day2,
+                    single_dataset_day2,
+                    surface_dataset_day2,
+                ]
+            )
+
+            if len(valid_files) < 6:
+                print(f"Skipping date {i} due to missing or invalid files.")
+                continue
+
             create_batch_for_pair_of_days(
                 atmospheric_dataset_day1,
                 single_dataset_day1,
@@ -617,7 +679,7 @@ def create_dataset(
                 atmospheric_dataset_day2,
                 single_dataset_day2,
                 surface_dataset_day2,
-                species_dataset,
+                # species_dataset,
                 agriculture_dataset,
                 forest_dataset,
                 land_dataset,
@@ -636,7 +698,7 @@ def create_dataset(
             surface_dataset=surface_dataset,
             single_dataset=single_dataset,
             atmospheric_dataset=atmospheric_dataset,
-            species_dataset=species_dataset,
+            # species_dataset=species_dataset,
             agriculture_dataset=agriculture_dataset,
             forest_dataset=forest_dataset,
             land_dataset=land_dataset,
@@ -651,12 +713,26 @@ def create_batch_for_pair_of_days(
     atmospheric_dataset_day2,
     single_dataset_day2,
     surface_dataset_day2,
-    species_dataset,
+    # species_dataset,
     agriculture_dataset,
     forest_dataset,
     land_dataset,
     species_extinction_dataset,
 ):
+    valid_files = process_netcdf_files(
+        [
+            atmospheric_dataset_day1,
+            single_dataset_day1,
+            surface_dataset_day1,
+            atmospheric_dataset_day2,
+            single_dataset_day2,
+            surface_dataset_day2,
+        ]
+    )
+
+    if len(valid_files) < 6:
+        print(f"Skipping date due to missing or invalid files.")
+        return
     atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
     single_dataset_day1 = xr.open_dataset(single_dataset_day1)
     surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
@@ -675,20 +751,42 @@ def create_batch_for_pair_of_days(
         [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
     )
 
-    batch = create_batches(
-        surface_dataset=surface_dataset,
-        single_dataset=single_dataset,
-        atmospheric_dataset=atmospheric_dataset,
-        species_dataset=species_dataset,
-        agriculture_dataset=agriculture_dataset,
-        forest_dataset=forest_dataset,
-        land_dataset=land_dataset,
-        species_extinction_dataset=species_extinction_dataset,
-    )
+            batch = create_batches(
+                surface_dataset=surface_dataset,
+                single_dataset=single_dataset,
+                atmospheric_dataset=atmospheric_dataset,
+                # species_dataset=species_dataset,
+                agriculture_dataset=agriculture_dataset,
+                forest_dataset=forest_dataset,
+                land_dataset=land_dataset,
+                species_extinction_dataset=species_extinction_dataset,
+            )
 
-    atmospheric_dataset_day1.close()
-    single_dataset_day1.close()
-    surface_dataset_day1.close()
-    atmospheric_dataset_day2.close()
-    single_dataset_day2.close()
-    surface_dataset_day2.close()
+            if batch is not None:
+                batches.append(batch)
+
+            atmospheric_dataset_day1.close()
+            single_dataset_day1.close()
+            surface_dataset_day1.close()
+            atmospheric_dataset_day2.close()
+            single_dataset_day2.close()
+            surface_dataset_day2.close()
+
+    elif load_type == "large-file":
+
+        (
+            surface_dataset,
+            single_dataset,
+            atmospheric_dataset,
+        ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
+
+        batches = create_batches(
+            surface_dataset=surface_dataset,
+            single_dataset=single_dataset,
+            atmospheric_dataset=atmospheric_dataset,
+            # species_dataset=species_dataset,
+            agriculture_dataset=agriculture_dataset,
+            forest_dataset=forest_dataset,
+            land_dataset=land_dataset,
+            species_extinction_dataset=species_extinction_dataset,
+        )

@@ -287,16 +287,16 @@ def initialize_climate_tensors(
                 placeholder_value,
                 dtype=torch.float32,
             ),
-            "u10": torch.full(
-                (T, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
-            "v10": torch.full(
-                (T, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "u10": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+            # "v10": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
         },
         "single": {
             "z": torch.full(
@@ -309,38 +309,39 @@ def initialize_climate_tensors(
                 placeholder_value,
                 dtype=torch.float32,
             ),
-            "slt": torch.full(
-                (T, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "slt": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
         },
+        # TODO: Change it again to 13 pressure levels.
         "atmospheric": {
             "z": torch.full(
-                (T, pressure_levels, len(lat_range), len(lon_range)),
+                (T, 2, len(lat_range), len(lon_range)),
                 placeholder_value,
                 dtype=torch.float32,
             ),
-            "t": torch.full(
-                (T, pressure_levels, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "t": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
             "u": torch.full(
-                (T, pressure_levels, len(lat_range), len(lon_range)),
+                (T, 2, len(lat_range), len(lon_range)),
                 placeholder_value,
                 dtype=torch.float32,
             ),
             "v": torch.full(
-                (T, pressure_levels, len(lat_range), len(lon_range)),
+                (T, 2, len(lat_range), len(lon_range)),
                 placeholder_value,
                 dtype=torch.float32,
             ),
-            "q": torch.full(
-                (T, pressure_levels, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "q": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
         },
     }
 
@@ -370,7 +371,7 @@ def initialize_species_tensors(
         # "Image": torch.full(T, len(lat_range), len(lon_range), 3, 64, 64) placeholder_value, dtype=torch.float16),
         # "Audio": torch.full(T, len(lat_range), len(lon_range), 1, 13, 1) placeholder_value, dtype=torch.float16),
         "Description": torch.full(
-            (T, len(lat_range), len(lon_range), 1, 64, 64),
+            (T, len(lat_range), len(lon_range), 64, 64),
             placeholder_value,
             dtype=torch.float16,
         ),
@@ -555,7 +556,7 @@ def preprocess_era5(
     device: torch.device,
     locations: Dict[str, float],
     scales: Dict[str, float],
-    crop_mode: str = "truncate",
+    # crop_mode: str = "truncate",
 ) -> DataBatch:
     """
     Prepares the batch by applying data type conversion, normalization, cropping,
@@ -576,8 +577,47 @@ def preprocess_era5(
     """
     batch = batch.type(dtype)
     batch = batch.normalize_data(locations, scales)
-    patch_size = 4
-    batch = batch.crop(patch_size=patch_size, mode=crop_mode)
+    # patch_size = 4
+    # batch = batch.crop(patch_size=patch_size, mode=crop_mode)
     batch = batch.to(device)
 
     return batch
+
+
+def is_valid_netcdf(file_path: str) -> bool:
+    """
+    Check if a NetCDF file is valid and can be opened without errors.
+
+    Args:
+        file_path (str): Path to the NetCDF file.
+
+    Returns:
+        bool: True if the file is valid, False otherwise.
+    """
+    try:
+        with xr.open_dataset(file_path) as ds:
+            ds.load()
+        return True
+    except Exception as e:
+        print(f"Invalid NetCDF file: {file_path} | Error: {e}")
+        return False
+
+
+def process_netcdf_files(file_paths: list) -> list:
+    """
+    Process a list of NetCDF files, skipping invalid ones.
+
+    Args:
+        file_paths (list): List of NetCDF file paths.
+
+    Returns:
+        valid_files (list): List of valid files.
+    """
+    valid_files = []
+    for file_path in file_paths:
+        if is_valid_netcdf(file_path):
+            valid_files.append(file_path)
+        else:
+            print(f"Skipping invalid file: {file_path}")
+
+    return valid_files

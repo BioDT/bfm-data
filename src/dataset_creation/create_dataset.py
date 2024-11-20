@@ -610,44 +610,88 @@ def create_dataset(
                 surface_dataset_day2,
             ) = grouped_files[i + 1]
 
-            atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
-            single_dataset_day1 = xr.open_dataset(single_dataset_day1)
-            surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
-
-            atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2)
-            single_dataset_day2 = xr.open_dataset(single_dataset_day2)
-            surface_dataset_day2 = xr.open_dataset(surface_dataset_day2)
-
-            atmospheric_dataset = xr.concat(
-                [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
-            )
-            single_dataset = xr.concat(
-                [single_dataset_day1, single_dataset_day2], dim="valid_time"
-            )
-            surface_dataset = xr.concat(
-                [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
+            create_batch_for_pair_of_days(
+                atmospheric_dataset_day1,
+                single_dataset_day1,
+                surface_dataset_day1,
+                atmospheric_dataset_day2,
+                single_dataset_day2,
+                surface_dataset_day2,
+                species_dataset,
+                agriculture_dataset,
+                forest_dataset,
+                land_dataset,
+                species_extinction_dataset,
             )
 
-            batch = create_batches(
-                surface_dataset=surface_dataset,
-                single_dataset=single_dataset,
-                atmospheric_dataset=atmospheric_dataset,
-                species_dataset=species_dataset,
-                agriculture_dataset=agriculture_dataset,
-                forest_dataset=forest_dataset,
-                land_dataset=land_dataset,
-                species_extinction_dataset=species_extinction_dataset,
-            )
+    elif load_type == "large-file":
 
-            if batch is not None:
-                batches.append(batch)
+        (
+            surface_dataset,
+            single_dataset,
+            atmospheric_dataset,
+        ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
 
-            atmospheric_dataset_day1.close()
-            single_dataset_day1.close()
-            surface_dataset_day1.close()
-            atmospheric_dataset_day2.close()
-            single_dataset_day2.close()
-            surface_dataset_day2.close()
+        batches = create_batches(
+            surface_dataset=surface_dataset,
+            single_dataset=single_dataset,
+            atmospheric_dataset=atmospheric_dataset,
+            species_dataset=species_dataset,
+            agriculture_dataset=agriculture_dataset,
+            forest_dataset=forest_dataset,
+            land_dataset=land_dataset,
+            species_extinction_dataset=species_extinction_dataset,
+        )
+
+
+def create_batch_for_pair_of_days(
+    atmospheric_dataset_day1,
+    single_dataset_day1,
+    surface_dataset_day1,
+    atmospheric_dataset_day2,
+    single_dataset_day2,
+    surface_dataset_day2,
+    species_dataset,
+    agriculture_dataset,
+    forest_dataset,
+    land_dataset,
+    species_extinction_dataset,
+):
+    atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
+    single_dataset_day1 = xr.open_dataset(single_dataset_day1)
+    surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
+
+    atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2)
+    single_dataset_day2 = xr.open_dataset(single_dataset_day2)
+    surface_dataset_day2 = xr.open_dataset(surface_dataset_day2)
+
+    atmospheric_dataset = xr.concat(
+        [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
+    )
+    single_dataset = xr.concat(
+        [single_dataset_day1, single_dataset_day2], dim="valid_time"
+    )
+    surface_dataset = xr.concat(
+        [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
+    )
+
+    batch = create_batches(
+        surface_dataset=surface_dataset,
+        single_dataset=single_dataset,
+        atmospheric_dataset=atmospheric_dataset,
+        species_dataset=species_dataset,
+        agriculture_dataset=agriculture_dataset,
+        forest_dataset=forest_dataset,
+        land_dataset=land_dataset,
+        species_extinction_dataset=species_extinction_dataset,
+    )
+
+    atmospheric_dataset_day1.close()
+    single_dataset_day1.close()
+    surface_dataset_day1.close()
+    atmospheric_dataset_day2.close()
+    single_dataset_day2.close()
+    surface_dataset_day2.close()
 
     elif load_type == "large-file":
 

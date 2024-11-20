@@ -19,17 +19,18 @@ app = typer.Typer()
 # the file to save the potential pairs of days for batch
 list_file_path = "ERA5_days_pairs.json"
 
-era5_directory = "/data/projects/biodt/storage/data/Copernicus/ERA5"
+STORAGE_DIR = "/data/projects/biodt/storage"  # hinton
+STORAGE_DIR = "/projects/prjs1134/data/projects/biodt/storage"  # snellius
 
-species_file = "/data/projects/biodt/storage/processed_data/species_dataset1.parquet"
-agriculture_file = (
-    "/data/projects/biodt/storage/data/Agriculture/Europe_combined_agriculture_data.csv"
-)
-land_file = "/data/projects/biodt/storage/data/Land/Europe_combined_land_data.csv"
-forest_file = "/data/projects/biodt/storage/data/Forest/Europe_forest_data.csv"
-species_extinction_file = (
-    "/data/projects/biodt/storage/data/RedList/Europe_red_list_index.csv"
-)
+DATA_DIR = f"{STORAGE_DIR}/data"
+
+era5_directory = f"{DATA_DIR}/Copernicus/ERA5"
+
+species_file = f"{STORAGE_DIR}/processed_data/species_dataset1.parquet"
+agriculture_file = f"{DATA_DIR}/Agriculture/Europe_combined_agriculture_data.csv"
+land_file = f"{DATA_DIR}/Land/Europe_combined_land_data.csv"
+forest_file = f"{DATA_DIR}/Forest/Europe_forest_data.csv"
+species_extinction_file = f"{DATA_DIR}/RedList/Europe_red_list_index.csv"
 
 
 @app.command()

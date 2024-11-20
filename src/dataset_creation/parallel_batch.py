@@ -90,25 +90,25 @@ def run_single(index: int):
     single_dataset_day2 = selected["day_2"]["single"]
     surface_dataset_day2 = selected["day_2"]["surface"]
 
-    # species_dataset = load_species_data(species_file)
-    # agriculture_dataset = load_world_bank_data(agriculture_file)
-    # land_dataset = load_world_bank_data(land_file)
-    # forest_dataset = load_world_bank_data(forest_file)
-    # species_extinction_dataset = load_world_bank_data(species_extinction_file)
+    species_dataset = load_species_data(species_file)
+    agriculture_dataset = load_world_bank_data(agriculture_file)
+    land_dataset = load_world_bank_data(land_file)
+    forest_dataset = load_world_bank_data(forest_file)
+    species_extinction_dataset = load_world_bank_data(species_extinction_file)
 
-    # create_batch_for_pair_of_days(
-    #     atmospheric_dataset_day1,
-    #     single_dataset_day1,
-    #     surface_dataset_day1,
-    #     atmospheric_dataset_day2,
-    #     single_dataset_day2,
-    #     surface_dataset_day2,
-    #     species_dataset,
-    #     agriculture_dataset,
-    #     forest_dataset,
-    #     land_dataset,
-    #     species_extinction_dataset,
-    # )
+    create_batch_for_pair_of_days(
+        atmospheric_dataset_day1,
+        single_dataset_day1,
+        surface_dataset_day1,
+        atmospheric_dataset_day2,
+        single_dataset_day2,
+        surface_dataset_day2,
+        species_dataset,
+        agriculture_dataset,
+        forest_dataset,
+        land_dataset,
+        species_extinction_dataset,
+    )
 
 
 if __name__ == "__main__":

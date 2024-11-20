@@ -3,8 +3,9 @@
 from pathlib import Path
 
 HOME_DIR = Path.home()
-DATA_DIR = Path("/data/projects/biodt/storage/data")
-STORAGE_DIR = Path("/data/projects/biodt/storage")
+# STORAGE_DIR = Path("/data/projects/biodt/storage") # hinton
+STORAGE_DIR = Path("/projects/prjs1134/data/projects/biodt/storage") # snellius
+DATA_DIR = STORAGE_DIR / "data"
 
 LIFE_DIR = DATA_DIR / "Life"
 ERA5_DIR = DATA_DIR / "Copernicus/ERA5"

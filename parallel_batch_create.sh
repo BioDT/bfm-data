@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=batch_create
-#SBATCH --partition=gpu_h100
+# rome and genoa cause OOM, let's go GPU that has more RAM
+#SBATCH --partition=gpu_a100
 #SBATCH --time=6:00:00
 # SBATCH --nodes=1
 # SBATCH --ntasks-per-node=1

@@ -1,11 +1,20 @@
 #!/bin/bash
+#SBATCH --job-name=batch_create
+# SBATCH --partition=gpu_h100
+#SBATCH --time=6:00:00
+# SBATCH --nodes=1
+# SBATCH --ntasks-per-node=1
+# SBATCH --cpus-per-task=18
+# SBATCH --gpus-per-node=1
+
 
 # use:
-# sbatch -a 0-735 generate_batches.sh
+# sbatch -a 0-735 parallel_batch_create.sh
 # first run the following:
 # python src/dataset_creation/parallel_batch.py create-list-file
 
 echo "SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID"
 
+source venv/bin/activate
 
 python src/dataset_creation/parallel_batch.py run-single $SLURM_ARRAY_TASK_ID

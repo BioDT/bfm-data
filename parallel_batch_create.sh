@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=batch_create
-# SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_h100
 #SBATCH --time=6:00:00
 # SBATCH --nodes=1
 # SBATCH --ntasks-per-node=1
 # SBATCH --cpus-per-task=18
-# SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=1
 
 
 # use:

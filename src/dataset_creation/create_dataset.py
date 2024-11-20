@@ -132,10 +132,10 @@ def create_batch(
                             .sel(latitude=lat, longitude=lon, method="nearest")
                             .values
                         )
-                        surfaces_variables[var_name][
-                            t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            var_value.item() if not np.isnan(var_value) else 0.0
+                        surfaces_variables[var_name][t, lat_idx, lon_idx] = (
+                            torch.tensor(
+                                var_value.item() if not np.isnan(var_value) else 0.0
+                            )
                         )
 
                     for var_name in ["z", "lsm"]:
@@ -657,22 +657,7 @@ def create_dataset(
                 surface_dataset_day2,
             ) = grouped_files[i + 1]
 
-            valid_files = process_netcdf_files(
-                [
-                    atmospheric_dataset_day1,
-                    single_dataset_day1,
-                    surface_dataset_day1,
-                    atmospheric_dataset_day2,
-                    single_dataset_day2,
-                    surface_dataset_day2,
-                ]
-            )
-
-            if len(valid_files) < 6:
-                print(f"Skipping date {i} due to missing or invalid files.")
-                continue
-
-            create_batch_for_pair_of_days(
+            batch = create_batch_for_pair_of_days(
                 atmospheric_dataset_day1,
                 single_dataset_day1,
                 surface_dataset_day1,
@@ -685,6 +670,8 @@ def create_dataset(
                 land_dataset,
                 species_extinction_dataset,
             )
+            if batch is not None:
+                batches.append(batch)
 
     elif load_type == "large-file":
 
@@ -733,6 +720,7 @@ def create_batch_for_pair_of_days(
     if len(valid_files) < 6:
         print(f"Skipping date due to missing or invalid files.")
         return
+
     atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
     single_dataset_day1 = xr.open_dataset(single_dataset_day1)
     surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
@@ -751,42 +739,22 @@ def create_batch_for_pair_of_days(
         [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
     )
 
-            batch = create_batches(
-                surface_dataset=surface_dataset,
-                single_dataset=single_dataset,
-                atmospheric_dataset=atmospheric_dataset,
-                # species_dataset=species_dataset,
-                agriculture_dataset=agriculture_dataset,
-                forest_dataset=forest_dataset,
-                land_dataset=land_dataset,
-                species_extinction_dataset=species_extinction_dataset,
-            )
+    batch = create_batches(
+        surface_dataset=surface_dataset,
+        single_dataset=single_dataset,
+        atmospheric_dataset=atmospheric_dataset,
+        # species_dataset=species_dataset,
+        agriculture_dataset=agriculture_dataset,
+        forest_dataset=forest_dataset,
+        land_dataset=land_dataset,
+        species_extinction_dataset=species_extinction_dataset,
+    )
 
-            if batch is not None:
-                batches.append(batch)
+    atmospheric_dataset_day1.close()
+    single_dataset_day1.close()
+    surface_dataset_day1.close()
+    atmospheric_dataset_day2.close()
+    single_dataset_day2.close()
+    surface_dataset_day2.close()
 
-            atmospheric_dataset_day1.close()
-            single_dataset_day1.close()
-            surface_dataset_day1.close()
-            atmospheric_dataset_day2.close()
-            single_dataset_day2.close()
-            surface_dataset_day2.close()
-
-    elif load_type == "large-file":
-
-        (
-            surface_dataset,
-            single_dataset,
-            atmospheric_dataset,
-        ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
-
-        batches = create_batches(
-            surface_dataset=surface_dataset,
-            single_dataset=single_dataset,
-            atmospheric_dataset=atmospheric_dataset,
-            # species_dataset=species_dataset,
-            agriculture_dataset=agriculture_dataset,
-            forest_dataset=forest_dataset,
-            land_dataset=land_dataset,
-            species_extinction_dataset=species_extinction_dataset,
-        )
+    return batch

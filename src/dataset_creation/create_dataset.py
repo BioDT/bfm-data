@@ -692,22 +692,3 @@ def create_batch_for_pair_of_days(
     atmospheric_dataset_day2.close()
     single_dataset_day2.close()
     surface_dataset_day2.close()
-
-    elif load_type == "large-file":
-
-        (
-            surface_dataset,
-            single_dataset,
-            atmospheric_dataset,
-        ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
-
-        batches = create_batches(
-            surface_dataset=surface_dataset,
-            single_dataset=single_dataset,
-            atmospheric_dataset=atmospheric_dataset,
-            species_dataset=species_dataset,
-            agriculture_dataset=agriculture_dataset,
-            forest_dataset=forest_dataset,
-            land_dataset=land_dataset,
-            species_extinction_dataset=species_extinction_dataset,
-        )

@@ -6,6 +6,7 @@ import json
 
 import typer
 
+from src.config.paths import DATA_DIR, STORAGE_DIR
 from src.dataset_creation.create_dataset import create_batch_for_pair_of_days
 from src.dataset_creation.load_data import (
     load_era5_datasets,
@@ -18,11 +19,6 @@ app = typer.Typer()
 
 # the file to save the potential pairs of days for batch
 list_file_path = "ERA5_days_pairs.json"
-
-STORAGE_DIR = "/data/projects/biodt/storage"  # hinton
-STORAGE_DIR = "/projects/prjs1134/data/projects/biodt/storage"  # snellius
-
-DATA_DIR = f"{STORAGE_DIR}/data"
 
 era5_directory = f"{DATA_DIR}/Copernicus/ERA5"
 

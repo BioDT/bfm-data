@@ -274,9 +274,8 @@ class ERA5Downloader(Downloader):
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     futures = []
                     for timestamp in date_chunk:
-                        date_part, time_part = timestamp.split(" ")
-                        self.date = date_part
-                        self.time = time_part
+                        self.date = timestamp
+                        self.time = time
                         for level in levels:
 
                             file_path = f"{ERA5_DIR}/ERA5-Reanalysis-{level}-{self.date}-{self.date}.nc"
@@ -322,7 +321,7 @@ def era5(
         batch_size (int): Number of requests to process at once (used in "timestamps" mode).
         time (str): The time range for data download (default: "00/to/23/by/6").
     """
-    era5_downloader = ERA5Downloader(data_dir=DATA_DIR)
+    era5_downloader = ERA5Downloader(data_dir=DATA_DIR, area=[72, -30, 34, 50])
     era5_downloader.run(
         mode=mode,
         start_year=start_year,

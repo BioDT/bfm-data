@@ -104,5 +104,5 @@ def mop():
     """
     Run the MOLDownloader for barcode of life data.
     """
-    bold_downloader = MOL(DATA_DIR)
-    bold_downloader.run()
+    mop_downloader = MOL(DATA_DIR)
+    mop_downloader.run()

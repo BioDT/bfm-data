@@ -9,6 +9,7 @@ from src.utils.geo import (
     get_bounding_boxes_for_countries,
     get_countries_by_continent,
     get_country_bounding_box,
+    get_country_name_from_iso,
 )
 
 
@@ -94,10 +95,31 @@ class WorldBankDataProcessor:
             list: A list of (lat, lon) points within the bounding box.
         """
         min_lon, min_lat, max_lon, max_lat = bbox
+
+        if min_lon < 0:
+            min_lon += 360
+        if max_lon < 0:
+            max_lon += 360
+
         lat_points = np.arange(90, -90 - degree_step, -degree_step)
         lon_points = np.arange(0, 360 + degree_step, degree_step)
+
         lat_points = lat_points[(lat_points >= min_lat) & (lat_points <= max_lat)]
-        lon_points = lon_points[(lon_points >= min_lon) & (lon_points <= max_lon)]
+
+        if min_lon > max_lon:
+            lon_points = np.concatenate(
+                [
+                    lon_points[(lon_points >= min_lon)],
+                    lon_points[(lon_points <= max_lon)],
+                ]
+            )
+        else:
+            lon_points = lon_points[(lon_points >= min_lon) & (lon_points <= max_lon)]
+
+        if len(lat_points) == 0 or len(lon_points) == 0:
+            center_lat = (min_lat + max_lat) / 2
+            center_lon = (min_lon + max_lon) / 2
+            return [(center_lat, center_lon)]
 
         return [(lat, lon) for lat in lat_points for lon in lon_points]
 
@@ -131,8 +153,10 @@ class WorldBankDataProcessor:
                                 }
                             )
         else:
-            for country, bbox in self.country_rectangles.items():
+            for country_iso, bbox in self.country_rectangles.items():
                 grid_points = self.generate_country_grid(bbox)
+
+                country = get_country_name_from_iso(country_iso)
                 processed_data[country] = []
 
                 for point in grid_points:

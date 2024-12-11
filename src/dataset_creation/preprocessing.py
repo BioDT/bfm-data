@@ -51,57 +51,57 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
         )
 
         dataset["Timestamp"] = dataset["Timestamp"].apply(
-            lambda ts: (np.datetime64(ts).astype("datetime64[s]").tolist(),)
+            lambda ts: (np.datetime64(ts).astype("datetime64[s]"))
             if pd.notnull(ts)
             else None
         )
 
-    dataset["Species"] = label_encode(dataset, "Species")
-    dataset["Phylum"] = label_encode(dataset, "Phylum")
-    dataset["Class"] = label_encode(dataset, "Class")
-    dataset["Order"] = label_encode(dataset, "Order")
-    dataset["Family"] = label_encode(dataset, "Family")
-    dataset["Genus"] = label_encode(dataset, "Genus")
-    dataset["Redlist"] = label_encode(dataset, "Redlist")
+    categorical_columns = [
+        "Species",
+        "Phylum",
+        "Class",
+        "Order",
+        "Family",
+        "Genus",
+        "Redlist",
+    ]
+    for column in categorical_columns:
+        if column in dataset.columns:
+            dataset[column] = dataset[column].apply(
+                lambda x: label_encode(pd.DataFrame({column: [x]}), column).item()
+                if pd.notnull(x)
+                else None
+            )
 
     dataset["Latitude"] = dataset["Latitude"].apply(
-        lambda lat: round_to_nearest_grid(lat) if pd.notnull(lat) else np.nan
+        lambda lat: round_to_nearest_grid(lat) if pd.notnull(lat) else None
     )
     dataset["Longitude"] = dataset["Longitude"].apply(
-        lambda lon: round_to_nearest_grid(lon) if pd.notnull(lon) else np.nan
+        lambda lon: round_to_nearest_grid(lon) if pd.notnull(lon) else None
     )
 
-    if "Image" in dataset.columns:
-        dataset["Image"] = dataset["Image"].apply(
-            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-        )
-    if "Audio" in dataset.columns:
-        dataset["Audio"] = dataset["Audio"].apply(
-            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-        )
-    if "eDNA" in dataset.columns:
-        dataset["eDNA"] = dataset["eDNA"].apply(
-            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-        )
-    if "Description" in dataset.columns:
-        dataset["Description"] = dataset["Description"].apply(
-            lambda x: np.array(x) if isinstance(x, torch.Tensor) else x
-        )
+    tensor_columns = ["Image", "Audio", "eDNA", "Description"]
+    for column in tensor_columns:
+        if column in dataset.columns:
+            dataset[column] = dataset[column].apply(
+                lambda x: np.array(x)
+                if isinstance(x, torch.Tensor)
+                else x
+                if x is not None
+                else None
+            )
 
     dataset["Latitude"] = dataset["Latitude"].apply(
-        lambda x: torch.tensor(x, dtype=torch.float16)
+        lambda x: torch.tensor(x, dtype=torch.float16) if x is not None else None
     )
     dataset["Longitude"] = dataset["Longitude"].apply(
-        lambda x: torch.tensor(x, dtype=torch.float16)
+        lambda x: torch.tensor(x, dtype=torch.float16) if x is not None else None
     )
 
     if "Distribution" in dataset.columns:
-        scaler = StandardScaler()
-        dataset["Distribution"] = scaler.fit_transform(
-            dataset[["Distribution"]].fillna(0)
-        )
+
         dataset["Distribution"] = dataset["Distribution"].apply(
-            lambda x: torch.tensor(x, dtype=torch.float16)
+            lambda x: torch.tensor(x, dtype=torch.float64) if x is not None else None
         )
 
     return dataset
@@ -254,6 +254,56 @@ def merge_timestamps(
     return all_timestamps
 
 
+# def initialize_climate_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     pressure_levels: int = 13,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, Dict[str, torch.Tensor]]:
+#     """
+#     Initialize sparse tensors for climate data, including surface, single, and atmospheric variables.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         pressure_levels (int): Number of pressure levels for atmospheric variables.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, Dict[str, torch.Tensor]]: Dictionary of initialized sparse tensors for climate data.
+#     """
+
+#     Create empty indices and values for sparse tensors
+#     def create_empty_sparse_tensor(shape, dtype=torch.float32):
+#         sparse_dim = len(shape)
+#         indices = torch.empty((sparse_dim, 0), dtype=torch.int64)  # No non-zero entries
+#         values = torch.empty((0,), dtype=dtype)  # No non-zero values
+#         return torch.sparse_coo_tensor(indices, values, shape, dtype=dtype)
+
+#     # Define shapes for surface and single variables (3D tensors)
+#     surface_shape = (T, len(lat_range), len(lon_range))
+#     single_shape = (T, len(lat_range), len(lon_range))
+
+#     # Define shapes for atmospheric variables (4D tensors)
+#     atmospheric_shape = (T, pressure_levels, len(lat_range), len(lon_range))
+
+#     return {
+#         "surface": {
+#             "t2m": create_empty_sparse_tensor(surface_shape),
+#             "msl": create_empty_sparse_tensor(surface_shape),
+#         },
+#         "single": {
+#             "lsm": create_empty_sparse_tensor(single_shape),
+#         },
+#         "atmospheric": {
+#             "z": create_empty_sparse_tensor(atmospheric_shape),
+#             "t": create_empty_sparse_tensor(atmospheric_shape),
+#         },
+#     }
+
+
 def initialize_climate_tensors(
     lat_range: np.ndarray,
     lon_range: np.ndarray,
@@ -299,11 +349,11 @@ def initialize_climate_tensors(
             # ),
         },
         "single": {
-            "z": torch.full(
-                (T, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "z": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
             "lsm": torch.full(
                 (T, len(lat_range), len(lon_range)),
                 placeholder_value,
@@ -315,28 +365,27 @@ def initialize_climate_tensors(
             #     dtype=torch.float32,
             # ),
         },
-        # TODO: Change it again to 13 pressure levels.
         "atmospheric": {
             "z": torch.full(
-                (T, 2, len(lat_range), len(lon_range)),
+                (T, pressure_levels, len(lat_range), len(lon_range)),
                 placeholder_value,
                 dtype=torch.float32,
             ),
-            # "t": torch.full(
+            "t": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            # "u": torch.full(
             #     (T, pressure_levels, len(lat_range), len(lon_range)),
             #     placeholder_value,
             #     dtype=torch.float32,
             # ),
-            "u": torch.full(
-                (T, 2, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
-            "v": torch.full(
-                (T, 2, len(lat_range), len(lon_range)),
-                placeholder_value,
-                dtype=torch.float32,
-            ),
+            # "v": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
             # "q": torch.full(
             #     (T, pressure_levels, len(lat_range), len(lon_range)),
             #     placeholder_value,
@@ -346,58 +395,153 @@ def initialize_climate_tensors(
     }
 
 
+# def initialize_species_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     num_species: int,
+#     placeholder_value: float = float("nan"),
+# ) -> Dict[str, Dict[str, torch.Tensor]]:
+#     """
+#     Initialize tensors for species data: dense for dynamic variables and sparse for metadata.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         num_species (int): Number of unique species (or metadata categories).
+#         placeholder_value (float): Value to initialize tensors with (default: NaN).
+
+#     Returns:
+#         Dict[str, Dict[str, torch.Tensor]]: Dictionary with dynamic and metadata variables.
+#     """
+#     dynamic_shapes = {
+#         "Description": (64, 64),  # Dense
+#         "eDNA": (256,),          # Dense
+#         "Distribution": (),      # Dense
+#     }
+
+#     dynamic_tensors = {}
+#     for var, var_shape in dynamic_shapes.items():
+#         extended_shape = (T, len(lat_range), len(lon_range), num_species, *var_shape)
+#         dynamic_tensors[var] = torch.full(
+#             extended_shape, placeholder_value, dtype=torch.float32
+#         )
+
+#     metadata_tensors = {}
+#     for meta_name in ["Phylum", "Class", "Order", "Family", "Genus", "Redlist"]:
+#         metadata_tensors[meta_name] = torch.sparse_coo_tensor(
+#             torch.empty((4, 0), dtype=torch.int64),  # Initialize empty sparse tensor
+#             torch.empty((0,), dtype=torch.float16),
+#             (T, len(lat_range), len(lon_range), num_species),
+#         )
+
+#     return {"dynamic": dynamic_tensors, "metadata": metadata_tensors}
+
+
 def initialize_species_tensors(
     lat_range: np.ndarray,
     lon_range: np.ndarray,
     T: int,
+    num_species: int,
     placeholder_value: float = float("nan"),
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Dict[str, torch.Tensor]]:
     """
-    Create tensors for species data, initialized with a placeholder value (NaN by default).
+    Initialize tensors for species data, separating dynamic time-series variables
+    and static metadata variables.
 
     Args:
         lat_range (np.ndarray): Latitude range.
         lon_range (np.ndarray): Longitude range.
         T (int): Number of timestamps.
-        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+        num_species (int): Number of unique species (or metadata categories).
+        placeholder_value (float): Value to initialize tensors with (default: NaN).
 
     Returns:
-        Dict[str, torch.Tensor]: Dictionary of initialized tensors for species data.
+        Dict[str, Dict[str, torch.Tensor]]: Dictionary with dynamic tensors and static metadata.
     """
-    return {
-        "Species": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
-        ),
-        # "Image": torch.full(T, len(lat_range), len(lon_range), 3, 64, 64) placeholder_value, dtype=torch.float16),
-        # "Audio": torch.full(T, len(lat_range), len(lon_range), 1, 13, 1) placeholder_value, dtype=torch.float16),
-        "Description": torch.full(
-            (T, len(lat_range), len(lon_range), 64, 64),
+    dynamic_shapes = {
+        # "Image": (3, 64, 64),
+        # "Audio": (1, 13, 1),
+        "Description": (64, 64),
+        "eDNA": (256,),
+        "Distribution": (),
+    }
+
+    dynamic_tensors = {}
+    for var, var_shape in dynamic_shapes.items():
+        extended_shape = (T, len(lat_range), len(lon_range), num_species, *var_shape)
+        dynamic_tensors[var] = torch.full(
+            extended_shape,
+            placeholder_value,
+            dtype=torch.float64 if var != "eDNA" else torch.float16,
+        )
+
+    metadata_tensors = {
+        "Phylum": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
             placeholder_value,
             dtype=torch.float16,
         ),
-        # "eDNA": torch.full(T, len(lat_range), len(lon_range), 256) placeholder_value, dtype=torch.float16),
-        "Phylum": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
-        ),
         "Class": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
         ),
         "Order": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
         ),
         "Family": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
         ),
         "Genus": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
         ),
         "Redlist": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
-        ),
-        "Distribution": torch.full(
-            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
         ),
     }
+
+    return {"dynamic": dynamic_tensors, "metadata": metadata_tensors}
+
+
+# def initialize_species_extinction_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensor for extinct species data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensor for extinct species data.
+#     """
+#     # Shape of the extinction value tensor
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create the sparse tensor
+#     extinction_value = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {"ExtinctionValue": extinction_value}
 
 
 def initialize_species_extinction_tensors(
@@ -423,6 +567,41 @@ def initialize_species_extinction_tensors(
             (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
     }
+
+
+# def initialize_land_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for land data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensors for land data.
+#     """
+#     # Shape of the land and NDVI tensors
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create sparse tensors
+#     land_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+#     ndvi_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {
+#         "Land": land_tensor,
+#         "NDVI": ndvi_tensor,
+#     }
 
 
 def initialize_land_tensors(
@@ -451,6 +630,45 @@ def initialize_land_tensors(
             (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
     }
+
+
+# def initialize_agriculture_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for agriculture data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+# Returns:
+#     Dict[str, torch.Tensor]: Sparse tensors for agriculture data.
+# """
+# # Shape of the agriculture tensors
+# shape = (T, len(lat_range), len(lon_range))
+
+# # Initialize empty indices and values for sparse tensor
+# indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+# values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+# # Create sparse tensors
+# agriculture_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# agriculture_irr_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# arable_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# cropland = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+# return {
+#     "AgricultureLand": agriculture_land,
+#     "AgricultureIrrLand": agriculture_irr_land,
+#     "ArableLand": arable_land,
+#     "Cropland": cropland,
+# }
 
 
 def initialize_agriculture_tensors(
@@ -485,6 +703,39 @@ def initialize_agriculture_tensors(
             (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
         ),
     }
+
+
+# def initialize_forest_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for forest data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensor for forest data.
+#     """
+#     # Shape of the forest tensor
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create sparse tensor
+#     forest_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {
+#         "Forest": forest_tensor,
+#     }
 
 
 def initialize_forest_tensors(

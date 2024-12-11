@@ -257,9 +257,6 @@ def preprocess_edna(
     if replace_ambiguous:
         edna_sequence = replace_ambiguous_bases(edna_sequence, threshold)
 
-    if edna_sequence is None:
-        return {"error": "Too many ambiguous bases in the sequence"}
-
     kmer_frequencies = None
     if extract_kmer:
         kmer_frequencies = extract_kmer_frequencies(edna_sequence, k)

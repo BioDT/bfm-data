@@ -2,6 +2,7 @@
 
 import csv
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import netCDF4 as nc
 import numpy as np
@@ -9,7 +10,11 @@ import requests
 import reverse_geocode
 
 from src.config import paths
-from src.utils.geo import get_bounding_boxes_for_countries, get_countries_by_continent
+from src.utils.geo import (
+    get_bounding_boxes_for_countries,
+    get_countries_by_continent,
+    get_country_name_from_iso,
+)
 
 
 class CopernicusLandDownloader:
@@ -129,10 +134,10 @@ class CopernicusLandDownloader:
             lon = dataset.variables["lon"][:]
             ndvi = dataset.variables["NDVI"][0, :, :]
             time_var = dataset.variables["time"]
-            year = nc.num2date(time_var[0], time_var.units).strftime("%Y")
+            month_year = nc.num2date(time_var[0], time_var.units).strftime("%m/%Y")
 
             lat_points = np.arange(90, -90 - 0.25, -0.25)
-            lon_points = np.arange(0, 360 + 0.25, 0.25)
+            lon_points = np.arange(-180, 180 + 0.25, 0.25)
 
             if self.global_mode:
                 ndvi_data = {}
@@ -144,25 +149,32 @@ class CopernicusLandDownloader:
                         ndvi_value = ndvi[i, j]
 
                         if ndvi_value != 255 and ndvi_value > self.ndvi_threshold:
-                            coord = (lat_val, lon_val)
+                            transformed_lon = lon_val if lon_val >= 0 else lon_val + 360
+                            coord = (lat_val, transformed_lon)
                             country = reverse_geocode.get(coord)["country"]
                             if country not in ndvi_data:
                                 ndvi_data[country] = []
-                            ndvi_data[country].append((lat_val, lon_val, ndvi_value))
+                            ndvi_data[country].append(
+                                (lat_val, transformed_lon, ndvi_value)
+                            )
 
             else:
+                ndvi_data = {
+                    get_country_name_from_iso(country): []
+                    for country in self.country_rectangles.keys()
+                }
 
-                ndvi_data = {country: [] for country in self.country_rectangles.keys()}
-
-                for country, bbox in self.country_rectangles.items():
+                for country_iso, bbox in self.country_rectangles.items():
                     min_lon, min_lat, max_lon, max_lat = bbox
 
                     for lat_val in lat_points:
                         for lon_val in lon_points:
-                            if (
-                                min_lat <= lat_val <= max_lat
-                                and min_lon <= lon_val <= max_lon
-                            ):
+                            if min_lon > max_lon:
+                                in_lon_range = lon_val >= min_lon or lon_val <= max_lon
+                            else:
+                                in_lon_range = min_lon <= lon_val <= max_lon
+
+                            if min_lat <= lat_val <= max_lat and in_lon_range:
                                 i = np.abs(lat - lat_val).argmin()
                                 j = np.abs(lon - lon_val).argmin()
                                 ndvi_value = ndvi[i, j]
@@ -171,23 +183,29 @@ class CopernicusLandDownloader:
                                     ndvi_value != 255
                                     and ndvi_value > self.ndvi_threshold
                                 ):
-                                    ndvi_data[country].append(
-                                        (lat_val, lon_val, ndvi_value)
+                                    transformed_lon = (
+                                        lon_val if lon_val >= 0 else lon_val + 360
+                                    )
+                                    country_name = get_country_name_from_iso(
+                                        country_iso
+                                    )
+                                    ndvi_data[country_name].append(
+                                        (lat_val, transformed_lon, ndvi_value)
                                     )
 
             dataset.close()
-            return year, ndvi_data
+            return month_year, ndvi_data
 
         except Exception as e:
             print(f"Error processing the file {nc_file_path}: {e}")
             return None, []
 
-    def update_csv(self, year: str, ndvi_data: list):
+    def update_csv(self, month_year: str, ndvi_data: list):
         """
         Update the CSV file with NDVI data for each country based on vegetation points.
 
         Args:
-            year (str): The year of the data.
+            month_year (str): The month and the year of the data.
             ndvi_data (list): A list of tuples with (latitude, longitude, NDVI value).
         """
         file_exists = os.path.exists(self.csv_file)
@@ -209,7 +227,7 @@ class CopernicusLandDownloader:
                     key = (row["Country"], row["Latitude"], row["Longitude"])
                     existing_data[key] = row
 
-        ndvi_column = f"NDVI_{year}"
+        ndvi_column = f"NDVI_{month_year}"
         if ndvi_column not in fieldnames:
             fieldnames.append(ndvi_column)
 
@@ -239,15 +257,40 @@ class CopernicusLandDownloader:
         """
         Process all NetCDF files in the directory and extract NDVI values.
         """
+        existing_months = set()
+        if os.path.exists(self.csv_file):
+            with open(self.csv_file, "r", newline="") as file:
+                reader = csv.DictReader(file)
+                if reader.fieldnames:
+                    existing_months = {
+                        col.split("_")[1]
+                        for col in reader.fieldnames
+                        if col.startswith("NDVI_")
+                    }
+
         nc_files = [f for f in os.listdir(self.data_dir) if f.endswith(".nc")]
 
         for nc_file in nc_files:
             file_path = os.path.join(self.data_dir, nc_file)
-            year, ndvi_data = self.extract_ndvi_locations(file_path)
+            try:
+                dataset = nc.Dataset(file_path, "r")
+                time_var = dataset.variables["time"]
+                month_year = nc.num2date(time_var[0], time_var.units).strftime("%m/%Y")
+                dataset.close()
 
-            if ndvi_data:
-                self.update_csv(year, ndvi_data)
-                print(f"Updated CSV for year: {year}")
+                if month_year in existing_months:
+                    print(
+                        f"Skipping file {nc_file} as month_year {month_year} already exists in the CSV."
+                    )
+                    continue
+
+                month_year, ndvi_data = self.extract_ndvi_locations(file_path)
+                if ndvi_data:
+                    self.update_csv(month_year, ndvi_data)
+                    print(f"Updated CSV for file: {nc_file}, month_year: {month_year}")
+
+            except Exception as e:
+                print(f"Error processing the file {nc_file}: {e}")
 
 
 def run_data_download(
@@ -267,14 +310,15 @@ def run_data_download(
     """
     links_url = "https://globalland.vito.be/download/manifest/ndvi_1km_v3_10daily_netcdf/manifest_clms_global_ndvi_1km_v3_10daily_netcdf_latest.txt"
     data_dir = paths.NDVI_DIR
+    land_dir = paths.LAND_DIR
 
     if global_mode:
-        csv_file = f"{data_dir}/global_ndvi.csv"
+        csv_file = f"{land_dir}/global_ndvi.csv"
     elif region:
         region_cleaned = region.replace(" ", "_")
-        csv_file = f"{data_dir}/{region_cleaned}_ndvi.csv"
+        csv_file = f"{land_dir}/{region_cleaned}_ndvi_test.csv"
     else:
-        csv_file = f"{data_dir}/default_ndvi.csv"
+        csv_file = f"{land_dir}/default_ndvi.csv"
 
     downloader = CopernicusLandDownloader(
         links_url=links_url,

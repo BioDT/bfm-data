@@ -45,9 +45,7 @@ ONLY_IMGS_PATHS = (
 )
 MODALITY_FOLDER_DIR = STORAGE_DIR / "modality_folder_lists"
 
-TIMESTAMPS = (
-    STORAGE_DIR / "processed_data" / "timestamps" / "sorted_timestamps_2000_2024.csv"
-)
+TIMESTAMPS = STORAGE_DIR / "processed_data" / "timestamps" / "dates_2000_2024.csv"
 
 STATISTICS_DIR = STORAGE_DIR / "statistics"
 
@@ -77,7 +75,7 @@ PERMANENT_CROPLAND_FILE = (
 )
 LAND_FILE = STORAGE_DIR / "dataset_files" / "World_Bank" / "land_area_1961_2021.csv"
 
-SPECIES_DATASET = STORAGE_DIR / "processed_data" / "species_dataset1.parquet"
+SPECIES_DATASET = STORAGE_DIR / "processed_data" / "species_dataset.parquet"
 
 AGRICULTURE_COMBINED_FILE = (
     DATA_DIR / "Agriculture" / "Europe_combined_agriculture_data.csv"
@@ -87,3 +85,5 @@ SPECIES_EXTINCTION_FILE = DATA_DIR / "RedList" / "Europe_red_list_index.csv"
 
 FOREST_FILE = DATA_DIR / "Forest" / "Europe_forest_data.csv"
 LAND_COMBINED_FILE = DATA_DIR / "Land" / "Europe_combined_land_data.csv"
+
+MAPPING_FILE = STORAGE_DIR / "processed_data" / "labels_mapping" / "label_mappings.json"

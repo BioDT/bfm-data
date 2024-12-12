@@ -214,12 +214,22 @@ def main():
     #     args.func(args)
 
     from src.config import paths
-    from src.data_ingestion.api_clients.era5 import era5
+    from src.data_ingestion.api_clients.era5 import ERA5Downloader, era5
+    from src.data_ingestion.ingestion_scripts.copernicus_land import run_data_download
+    from src.data_ingestion.ingestion_scripts.land import run_land_merging
+    from src.data_ingestion.ingestion_scripts.red_list import (
+        run_redlist_data_processing,
+    )
     from src.dataset_creation.create_dataset import create_dataset
+    from src.dataset_creation.create_species_dataset import (
+        create_species_dataset,
+        debug_distribution_matching,
+        process_all_folders_with_distribution,
+    )
     from src.utils.merge_data import save_sorted_timestamps
 
     create_dataset(
-        species_file=paths.SPECIES_DATASET,
+        species_file="/data/projects/biodt/storage/vector_db/species_dataset_2.parquet",
         era5_directory=paths.ERA5_DIR,
         agriculture_file=paths.AGRICULTURE_COMBINED_FILE,
         land_file=paths.LAND_COMBINED_FILE,
@@ -227,146 +237,6 @@ def main():
         species_extinction_file=paths.SPECIES_EXTINCTION_FILE,
         load_type="day-by-day",
     )
-    # create_species_dataset(paths.LIFE_DIR, '/data/projects/biodt/storage/processed_data/species_dataset3.parquet', start_year=2000, end_year=2005)
-
-    # import torch
-
-    # # Path to the saved batch file
-    # batch_file_path = "/data/projects/biodt/storage/batches/batch_2000-01-01_2000-01-01.pt"
-
-    # # Load the batch
-    # batch = torch.load(batch_file_path, map_location='cpu')
-
-    # print("Type of loaded batch:", type(batch))
-
-    # for var_name, tensor in batch.surface_variables.items():
-    #     print(f"Surface variable '{var_name}' shape: {tensor.shape}")
-
-    # for var_name, tensor in batch.single_variables.items():
-    #     print(f"Single variable '{var_name}' shape: {tensor.shape}")
-
-    # for var_name, tensor in batch.atmospheric_variables.items():
-    #     print(f"Atmospheric variable '{var_name}' shape: {tensor.shape}")
-    #     num_nans = torch.isnan(tensor).sum().item()  # Count the number of NaN values
-    #     print(f"Atmospheric variable '{var_name}' contains {num_nans} NaN values.")
-
-    # for var_name, tensor in batch.species_variables.items():
-    #     print(f"Species variable '{var_name}' shape: {tensor.shape}")
-
-    #     # Count the number of NaN values
-    #     num_nans = torch.isnan(tensor).sum().item()
-    #     print(f"Species variable '{var_name}' contains {num_nans} NaN values.")
-
-    #     # Count the number of non-NaN values
-    #     num_non_nans = tensor.numel() - num_nans  # Total elements minus NaNs
-    #     print(f"Species variable '{var_name}' contains {num_non_nans} non-NaN values.")
-
-    # print("Metadata:", batch.batch_metadata)
-
-    # import pandas as pd
-
-    # # Load the parquet file
-    # file_path = '/data/projects/biodt/storage/processed_data/species_dataset1.parquet'
-    # df = pd.read_parquet(file_path)
-
-    # # Total number of rows in the DataFrame
-    # total_rows = len(df)
-    # print(f"Total rows in the parquet file: {total_rows}")
-
-    # # Count rows where 'Timestamp' is empty or null
-    # # empty_timestamps_count = df['Timestamp'].isna().sum()
-    # # print(f"Number of rows with empty timestamps: {empty_timestamps_count}")
-
-    # # Count rows where any column is empty
-    # empty_columns_count = df.isna().any(axis=1).sum()
-    # print(f"Number of rows with at least one empty column: {empty_columns_count}")
-
-    # # Count the number of empty cells per column
-    # empty_cells_per_column = df.isna().sum()
-    # print("Number of empty cells per column:")
-    # print(empty_cells_per_column)
-
-    # # Find rows where all columns (except Timestamp) are empty
-    # empty_rows = df.drop(columns=['Timestamp']).isna().all(axis=1)
-
-    # # Count unique timestamps for which the row is empty
-    # empty_timestamps_count = df.loc[empty_rows, 'Timestamp'].nunique()
-
-    # # Display the count
-    # print(f"Number of unique timestamps with empty rows: {empty_timestamps_count}")
-
-    # import pandas as pd
-
-    # # Load the parquet file
-    # file_path = '/data/projects/biodt/storage/processed_data/species_dataset1.parquet'
-    # df = pd.read_parquet(file_path)
-
-    # # Specify the timestamp to filter
-    # target_timestamp = '2014-05-30T12:00:00.000000'
-
-    # # Filter rows with the specific timestamp
-    # filtered_rows = df[df['Timestamp'].apply(lambda x: target_timestamp in x)]
-
-    # # Display the filtered rows
-    # print(filtered_rows)
-
-    # # Check if the target timestamp exists
-    # timestamp_exists = target_timestamp in df['Timestamp'].values
-    # print(f"Does the target timestamp exist? {timestamp_exists}")
-
-    # filtered_rows = df[df['Timestamp'] == target_timestamp]
-    # print(f"Rows with the target timestamp '{target_timestamp}':")
-    # print(filtered_rows)
-
-    # rows_with_target_timestamp = df[df['Timestamp'] == target_timestamp]
-
-    # # Check if all columns except 'Timestamp' are empty
-    # all_empty_except_timestamp = rows_with_target_timestamp.drop(columns=['Timestamp']).isna().all(axis=1)
-
-    # print(f"Number of rows where all columns except 'Timestamp' are empty for '{target_timestamp}': {all_empty_except_timestamp.sum()}")
-
-    # import pandas as pd
-
-    # import pandas as pd
-
-    # import pandas as pd
-
-    # import pandas as pd
-
-    # def round_to_nearest_025(value):
-    #     """Round a value to the nearest 0.25, handling NaN."""
-    #     if pd.isna(value):
-    #         return value  # Keep NaN as is
-    #     return round(value * 4) / 4
-
-    # def process_species_data(input_csv, output_csv):
-    #     # Read the CSV file and handle encoding issues
-    #     try:
-    #         df = pd.read_csv(input_csv, encoding='utf-8', low_memory=False)
-    #     except UnicodeDecodeError:
-    #         print("UTF-8 decoding failed. Trying with 'latin1'.")
-    #         df = pd.read_csv(input_csv, encoding='latin1', low_memory=False)
-
-    #     # Rename and select relevant columns
-    #     df = df.rename(columns={'Binomial': 'species', 'Latitude': 'lat', 'Longitude': 'lon'})
-    #     years = [str(year) for year in range(1950, 2021)]  # Adjust range as necessary
-
-    #     # Filter the dataframe to keep only species, lat, lon, and years
-    #     selected_columns = ['species', 'lat', 'lon'] + years
-    #     df = df[selected_columns]
-
-    #     # Transform latitude and longitude to 0.25-degree resolution
-    #     df['lat'] = df['lat'].apply(round_to_nearest_025)
-    #     df['lon'] = df['lon'].apply(round_to_nearest_025).apply(lambda x: round(x % 360, 6) if pd.notna(x) else x)
-
-    #     # Save the processed data
-    #     df.to_csv(output_csv, index=False)
-    #     print(f"Processed data saved to {output_csv}")
-
-    # # Example usage
-    # input_csv = '/data/projects/biodt/storage/dataset_files/Living_Planet_Index/LPD2022_public.csv'  # Replace with your input file path
-    # output_csv = '/data/projects/biodt/storage/data/Distribution/species_distribution.csv'  # Replace with your output file path
-    # process_species_data(input_csv, output_csv)
 
 
 if __name__ == "__main__":

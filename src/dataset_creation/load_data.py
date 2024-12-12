@@ -44,7 +44,7 @@ def load_world_bank_data(filepath: str) -> pd.DataFrame:
     Load files from world bank, like forestry, agriculture, land data from a CSV file
     and return it as a DataFrame.
     """
-    data = pd.read_csv(filepath)
+    data = pd.read_csv(filepath, low_memory=False)
     return data
 
 
@@ -223,9 +223,9 @@ def extract_timestamp(x):
         tuple: A tuple containing the extracted timestamp if the input is valid, otherwise None.
     """
     if isinstance(x, np.ndarray) and len(x) > 0:
-        return (x[0],)
+        return x[0]
     elif isinstance(x, (str, pd.Timestamp)):
-        return (x,)
+        return x
     return None
 
 
@@ -250,33 +250,3 @@ def load_batches(batch_directory: str) -> list:
             batches.append(batch)
 
     return batches
-
-
-def print_batch_variables(batch: DataBatch) -> None:
-    """
-    Print all the variable values from the given DataBatch.
-
-    Args:
-        batch (DataBatch): The batch object containing climate and species data.
-    """
-    print("Surface Variables:")
-    for var_name, var_data in batch.surface_variables.items():
-        print(f"{var_name}: {var_data}")
-
-    print("\nSingle Variables:")
-    for var_name, var_data in batch.single_variables.items():
-        print(f"{var_name}: {var_data}")
-
-    print("\nAtmospheric Variables:")
-    for var_name, var_data in batch.atmospheric_variables.items():
-        print(f"{var_name}: {var_data}")
-
-    print("\nSpecies Variables:")
-    for var_name, var_data in batch.species_variables.items():
-        print(f"{var_name}: {var_data}")
-
-    print("\nMetadata:")
-    print(f"Latitudes: {batch.batch_metadata.latitudes}")
-    print(f"Longitudes: {batch.batch_metadata.longitudes}")
-    print(f"Timestamps: {batch.batch_metadata.timestamp}")
-    print(f"Pressure Levels: {batch.batch_metadata.pressure_levels}")

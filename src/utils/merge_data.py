@@ -78,6 +78,7 @@ def matching_image_audios(
                     "Latitude": avg_lat,
                     "Longitude": avg_lon,
                     "Timestamp": avg_time,
+                    "File_path": image_row["File_path"] + audio_row["File_path"],
                 }
             )
 
@@ -103,6 +104,12 @@ def extract_metadata_from_csv(metadata_file_path: str, file_type: str) -> dict:
             "Latitude": metadata["Latitude"].values[0],
             "Longitude": metadata["Longitude"].values[0],
             "Timestamp": metadata["Timestamp"].values[0],
+            "Kingdom": metadata["Kingdom"].values[0],
+            "Phylum": metadata["Phylum"].values[0],
+            "Class": metadata["Class"].values[0],
+            "Order": metadata["Order"].values[0],
+            "Family": metadata["Family"].values[0],
+            "Genus": metadata["Genus"].values[0],
         }
     elif file_type == "audio":
         return {
@@ -110,6 +117,12 @@ def extract_metadata_from_csv(metadata_file_path: str, file_type: str) -> dict:
             "Latitude": metadata["Latitude"].values[0],
             "Longitude": metadata["Longitude"].values[0],
             "Timestamp": metadata["Timestamp"].values[0],
+            "Kingdom": metadata["Kingdom"].values[0],
+            "Phylum": metadata["Phylum"].values[0],
+            "Class": metadata["Class"].values[0],
+            "Order": metadata["Order"].values[0],
+            "Family": metadata["Family"].values[0],
+            "Genus": metadata["Genus"].values[0],
         }
 
 

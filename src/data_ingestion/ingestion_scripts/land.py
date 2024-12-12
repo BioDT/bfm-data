@@ -33,8 +33,8 @@ def run_land_data_processing(region: str = None, global_mode: bool = True):
 
 
 def merge_land_data(
-    file_paths: list,
-    variable_names: list,
+    land_file: str,
+    ndvi_file: str,
     output_path: str,
     start_year=1961,
     end_year=2021,
@@ -44,45 +44,53 @@ def merge_land_data(
     Each year will have values for Land and NDVI data without prefixes in the year columns.
 
     Args:
-        file_paths (list of str): Paths to the CSV files.
-        variable_names (list of str): Names of the variables for each file.
+        land_file (str): Paths to the land CSV file.
+        ndvi_file (str): Paths to the ndvi CSV file.
         output_path (str): Path to save the transformed output CSV file.
         start_year (int): Starting year for the columns (default is 1961).
         end_year (int): Ending year for the columns (default is 2021).
     """
-    data_frames = []
+    land_df = pd.read_csv(land_file)
+    land_df_melted = land_df.melt(
+        id_vars=["Country", "Latitude", "Longitude"],
+        var_name="Year",
+        value_name="Land_Value",
+    )
+    land_df_melted["Year"] = land_df_melted["Year"].str.extract(r"(\d+)$").astype(int)
+    land_df_melted = land_df_melted[
+        (land_df_melted["Year"] >= start_year) & (land_df_melted["Year"] <= end_year)
+    ]
 
-    for file_path, variable_name in zip(file_paths, variable_names):
-        df = pd.read_csv(file_path)
-
-        df_melted = df.melt(
-            id_vars=["Country", "Latitude", "Longitude"],
-            var_name="Year",
-            value_name="Value",
-        )
-        df_melted["Year"] = df_melted["Year"].str.extract(r"(\d+)$").astype(int)
-        df_melted = df_melted[
-            (df_melted["Year"] >= start_year) & (df_melted["Year"] <= end_year)
-        ]
-        df_melted["Variable"] = variable_name
-
-        data_frames.append(df_melted)
-
-    combined_df = pd.concat(data_frames, ignore_index=True)
-
-    pivoted_df = combined_df.pivot_table(
-        index=["Country", "Latitude", "Longitude", "Variable"],
+    land_pivoted = land_df_melted.pivot_table(
+        index=["Country", "Latitude", "Longitude"],
         columns="Year",
-        values="Value",
+        values="Land_Value",
         aggfunc="first",
     ).reset_index()
 
-    pivoted_df.columns.name = None
-    pivoted_df.columns = [
-        str(col) if isinstance(col, int) else col for col in pivoted_df.columns
-    ]
+    ndvi_df = pd.read_csv(ndvi_file)
+    ndvi_df_melted = ndvi_df.melt(
+        id_vars=["Country", "Latitude", "Longitude"],
+        var_name="Month_Year",
+        value_name="NDVI_Value",
+    )
+    ndvi_df_melted = ndvi_df_melted.dropna(subset=["NDVI_Value"])
 
-    pivoted_df.to_csv(output_path, index=False)
+    ndvi_pivoted = ndvi_df_melted.pivot_table(
+        index=["Country", "Latitude", "Longitude"],
+        columns="Month_Year",
+        values="NDVI_Value",
+        aggfunc="first",
+    ).reset_index()
+
+    merged_df = pd.merge(
+        land_pivoted,
+        ndvi_pivoted,
+        on=["Country", "Latitude", "Longitude"],
+        how="outer",
+    )
+
+    merged_df.to_csv(output_path, index=False)
     print(f"Merged data saved to {output_path}")
 
 
@@ -90,11 +98,10 @@ def run_land_merging():
     """
     Runs the merging function with specified paths, variable names, and output path.
     """
-    file_paths = [
-        "/data/projects/biodt/storage/data/Land/Europe_land_data.csv",
-        "/data/projects/biodt/storage/data/Land/Europe_ndvi.csv",
-    ]
-    variable_names = ["Land", "NDVI"]
+
+    land_file = "/data/projects/biodt/storage/data/Land/Europe_land_data.csv"
+    ndvi_file = "/data/projects/biodt/storage/data/Land/Europe_ndvi_monthly_data.csv"
+
     output_path = paths.LAND_DIR / "Europe_combined_land_data.csv"
 
-    merge_land_data(file_paths, variable_names, output_path)
+    merge_land_data(land_file, ndvi_file, output_path)

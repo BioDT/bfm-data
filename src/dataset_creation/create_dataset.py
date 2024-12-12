@@ -1,5 +1,6 @@
-# src/data_creation/create_dataset.py
+# src/dataset_creation/preprocessing.py
 
+import glob
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
@@ -8,753 +9,870 @@ import numpy as np
 import pandas as pd
 import torch
 import xarray as xr
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-from src.config import paths
-from src.data_preprocessing.transformation.era5 import get_mean_standard_deviation
+from src.data_preprocessing.transformation.text import label_encode
 from src.dataset_creation.batch import DataBatch
-from src.dataset_creation.load_data import (
-    load_era5_datasets,
-    load_era5_files_grouped_by_date,
-    load_species_data,
-    load_world_bank_data,
-)
-from src.dataset_creation.metadata import BatchMetadata
-from src.dataset_creation.preprocessing import (
-    crop_lat_lon,
-    initialize_agriculture_tensors,
-    initialize_climate_tensors,
-    initialize_forest_tensors,
-    initialize_land_tensors,
-    initialize_species_extinction_tensors,
-    initialize_species_tensors,
-    merge_timestamps,
-    preprocess_era5,
-    process_netcdf_files,
-    rescale_sort_lat_lon,
-    reset_climate_tensors,
-    reset_tensors,
-)
+
+pd.set_option("future.no_silent_downcasting", True)
 
 
-def create_batch(
-    dates: list,
-    lat_range: np.ndarray,
-    lon_range: np.ndarray,
-    surface_dataset: xr.Dataset,
-    single_dataset: xr.Dataset,
-    atmospheric_dataset: xr.Dataset,
-    # species_dataset: pd.DataFrame,
-    # species_distribution_dataset: pd.DataFrame,
-    species_extinction_dataset: pd.DataFrame,
-    land_dataset: pd.DataFrame,
-    agriculture_dataset: pd.DataFrame,
-    forest_dataset: pd.DataFrame,
-    surfaces_variables: dict,
-    single_variables: dict,
-    atmospheric_variables: dict,
-    # species_variables: dict,
-    # species_distribution_variables: dict,
-    species_extinction_variables: dict,
-    land_variables: dict,
-    agriculture_variables: dict,
-    forest_variables: dict,
-) -> DataBatch:
+def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame:
     """
-    Create a DataBatch for a specific day by merging climate and species data but by giving two timestamps
-    for prediction purposes.
+    Preprocess and normalize the species dataset. This includes:
+    - Scaling numeric columns such as Latitude and Longitude using StandardScaler.
+    - Converting timestamp data to a standardized format (datetime without timezone).
+    - Label encoding categorical columns such as Species, Phylum, Class, etc.
+    - Converting Image, Audio, eDNA, and Description columns to tensors.
 
     Args:
-        dates (list): List or tuple of two timestamps.
-        lat_range (np.ndarray): Array of latitude values.
-        lon_range (np.ndarray): Array of longitude values.
-        surface_dataset (xarray.Dataset): Surface variables dataset.
-        single_dataset (xarray.Dataset): Single-level variables dataset.
-        atmospheric_dataset (xarray.Dataset): Atmospheric pressure-level dataset.
-        species_dataset (pd.DataFrame): Species data containing multimodal features.
-        species_extinction_dataset (pd.DataFrame): Species extinction data.
-        land_dataset (pd.DataFrame): Land data.
-        agriculture_dataset (pd.DataFrame): Agriculture data containing agriculture land, arable land, etc.
-        forest_dataset (pd.DataFrame): Forest data.
-        surfaces_variables (dict): Pre-initialized surface climate variables tensors.
-        single_variables (dict): Pre-initialized single-level climate variables tensors.
-        atmospheric_variables (dict): Pre-initialized atmospheric pressure variables tensors.
-        species_variables (dict): Pre-initialized species variables tensors.
-        species_extinction_variables (dict): Pre-initialized extinct species variables tensors.
-        land_variables (dict): Pre-initialized land variables tensors.
-        agriculture_variables (dict): Pre-initialized agriculture variables tensors.
-        forest_variables (dict): Pre-initialized forest variables tensors.
+        dataset (pd.DataFrame): The input dataset containing species data.
 
     Returns:
-        DataBatch: A DataBatch object containing both climate and species data for the given day.
+        pd.DataFrame: The preprocessed and normalized dataset with tensors and label-encoded categories.
     """
 
-    locations, scales = get_mean_standard_deviation(
-        surface_dataset, single_dataset, atmospheric_dataset
+    if "Timestamp" in dataset.columns:
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda x: np.nan if x in ["Unknown", "Uknown", None, np.nan] else x
+        )
+
+        dataset["Timestamp"] = dataset["Timestamp"].apply(standardize_timestamp_format)
+
+        dataset["Timestamp"] = pd.to_datetime(
+            dataset["Timestamp"], errors="coerce", utc=True
+        ).dt.tz_localize(None)
+
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: ts.to_pydatetime() if pd.notnull(ts) else None
+        )
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: round_to_nearest_hour(ts) if pd.notnull(ts) else None
+        )
+
+        dataset["Timestamp"] = dataset["Timestamp"].apply(
+            lambda ts: (
+                (np.datetime64(ts).astype("datetime64[s]")) if pd.notnull(ts) else None
+            )
+        )
+
+    categorical_columns = [
+        "Species",
+        "Phylum",
+        "Class",
+        "Order",
+        "Family",
+        "Genus",
+        "Redlist",
+    ]
+    for column in categorical_columns:
+        if column in dataset.columns:
+            dataset[column] = dataset[column].apply(
+                lambda x: (
+                    label_encode(pd.DataFrame({column: [x]}), column).item()
+                    if pd.notnull(x)
+                    else None
+                )
+            )
+
+    dataset["Latitude"] = dataset["Latitude"].apply(
+        lambda lat: round_to_nearest_grid(lat) if pd.notnull(lat) else None
+    )
+    dataset["Longitude"] = dataset["Longitude"].apply(
+        lambda lon: round_to_nearest_grid(lon) if pd.notnull(lon) else None
     )
 
-    # pressure_levels = tuple(
-    #     int(level) for level in atmospheric_dataset.pressure_level.values
-    # )
-    pressure_levels = (1000, 50)
-    print(pressure_levels)
-    print(dates)
-    for t, current_date in enumerate(dates):
-        print(t)
-        print(current_date)
+    tensor_columns = ["Image", "Audio", "eDNA", "Description"]
+    for column in tensor_columns:
+        if column in dataset.columns:
+            dataset[column] = dataset[column].apply(
+                lambda x: (
+                    np.array(x)
+                    if isinstance(x, torch.Tensor)
+                    else x if x is not None else None
+                )
+            )
 
-        try:
-            surface_variables_by_day = surface_dataset.sel(
-                valid_time=current_date, method="nearest"
-            ).load()
-            single_variables_by_day = single_dataset.sel(
-                valid_time=current_date, method="nearest"
-            ).load()
-            atmospheric_variables_by_day = atmospheric_dataset.sel(
-                valid_time=current_date, method="nearest"
-            ).load()
-            # pressure_levels = tuple(
-            #     int(level) for level in atmospheric_dataset.pressure_level.values
-            # )
-            pressure_levels = (1000, 50)
-            has_climate_data = True
-        except KeyError:
-            surface_variables_by_day = None
-            has_climate_data = False
-            pressure_levels = None
+    dataset["Latitude"] = dataset["Latitude"].apply(
+        lambda x: torch.tensor(x, dtype=torch.float16) if x is not None else None
+    )
+    dataset["Longitude"] = dataset["Longitude"].apply(
+        lambda x: torch.tensor(x, dtype=torch.float16) if x is not None else None
+    )
 
-        if has_climate_data:
-            for lat_idx, lat in enumerate(lat_range):
-                for lon_idx, lon in enumerate(lon_range):
-                    # TODO: add the extra variables
-                    for var_name in ["t2m", "msl"]:
-                        var_value = (
-                            surface_variables_by_day[var_name]
-                            .sel(latitude=lat, longitude=lon, method="nearest")
-                            .values
-                        )
-                        surfaces_variables[var_name][t, lat_idx, lon_idx] = (
-                            torch.tensor(
-                                var_value.item() if not np.isnan(var_value) else 0.0
-                            )
-                        )
+    if "Distribution" in dataset.columns:
 
-                    for var_name in ["z", "lsm"]:
-                        var_value = (
-                            single_variables_by_day[var_name]
-                            .sel(latitude=lat, longitude=lon, method="nearest")
-                            .values
-                        )
-                        single_variables[var_name][t, lat_idx, lon_idx] = torch.tensor(
-                            var_value.item() if not np.isnan(var_value) else 0.0
-                        )
+        dataset["Distribution"] = dataset["Distribution"].apply(
+            lambda x: torch.tensor(x, dtype=torch.float64) if x is not None else None
+        )
 
-                    for var_name in ["z", "u", "v"]:
-                        for p_idx, pressure_level in enumerate(pressure_levels):
-                            var_value = (
-                                atmospheric_variables_by_day[var_name]
-                                .sel(
-                                    latitude=lat,
-                                    longitude=lon,
-                                    pressure_level=pressure_level,
-                                    method="nearest",
-                                )
-                                .values
-                            )
+    return dataset
 
-                            atmospheric_variables[var_name][
-                                t, p_idx, lat_idx, lon_idx
-                            ] = torch.tensor(
-                                var_value.item() if not np.isnan(var_value) else 0.0
-                            )
 
-        # try:
-        #     species_variables_by_day = species_dataset[
-        #         species_dataset["Timestamp"].apply(
-        #             lambda x: x[0] if x is not None else None
-        #         )
-        #         == pd.Timestamp(current_date[0])
-        #     ]
-        #     has_species_data = True
-        # except KeyError:
-        #     species_variables_by_day = None
-        #     has_species_data = False
+def standardize_timestamp_format(ts):
+    """
+    Converts a timestamp to a standardized ISO 8601 format without timezone information.
 
-        # if has_species_data:
-        #     for lat_idx, lat in enumerate(lat_range):
-        #         for lon_idx, lon in enumerate(lon_range):
-        #             species_at_location = species_variables_by_day[
-        #                 (species_variables_by_day["Latitude"] == lat)
-        #                 & (species_variables_by_day["Longitude"] == lon)
-        #             ]
+    Args:
+        ts (Any): The timestamp to standardize. Can be a string, datetime, or other format that
+                  can be parsed by pd.to_datetime().
 
-        #             if not species_at_location.empty:
-        #                 species_entry = species_at_location.iloc[0]
+    Returns:
+        str or None: The timestamp in ISO 8601 format without timezone if conversion succeeds;
+                     None if the input is invalid or missing.
+    """
+    if pd.notnull(ts):
+        ts = pd.to_datetime(ts, utc=True).tz_localize(None)
+        return ts.strftime("%Y-%m-%dT%H:%M:%S")
+    return None
 
-        #                 species_variables["Species"][
-        #                     t, lat_idx, lon_idx
-        #                 ] = torch.tensor(species_entry["Species"], dtype=torch.float16)
 
-        #                 # species_variables["Image"][t, lat_idx, lon_idx] = species_entry[
-        #                 #     "Image"
-        #                 # ]
+def round_to_nearest_grid(value: float, grid_spacing: float = 0.25) -> float:
+    """
+    Rounds a given value (latitude or longitude) to the nearest grid point.
 
-        #                 # species_variables["Audio"][t, lat_idx, lon_idx] = species_entry[
-        #                 #     "Audio"
-        #                 # ]
+    Args:
+        value (float): The value to round.
+        grid_spacing (float): The grid spacing, default is 0.25 for ERA5.
 
-        #                 species_variables["eDNA"][t, lat_idx, lon_idx] = species_entry[
-        #                     "eDNA"
-        #                 ]
+    Returns:
+        float: The value rounded to the nearest grid point.
+    """
+    return round(value / grid_spacing) * grid_spacing
 
-        #                 species_variables["Description"][
-        #                     t, lat_idx, lon_idx
-        #                 ] = species_entry["Description"]
 
-        #                 species_variables["Distribution"][
-        #                     t, lat_idx, lon_idx
-        #                 ] = torch.tensor(
-        #                     species_entry["Distribution"], dtype=torch.float16
-        #                 )
+def round_to_nearest_hour(species_time: datetime, interval_hours: int = 6) -> datetime:
+    """
+    Rounds a given datetime to the nearest ERA5 time slot (00:00, 06:00, 12:00, 18:00).
 
-        #                 for category in [
-        #                     "Phylum",
-        #                     "Class",
-        #                     "Order",
-        #                     "Family",
-        #                     "Genus",
-        #                     "Redlist",
-        #                 ]:
-        #                     species_variables[category][
-        #                         t, lat_idx, lon_idx
-        #                     ] = torch.tensor(
-        #                         species_entry[category], dtype=torch.float16
-        #                     )
+    Args:
+        species_time (datetime): The species timestamp.
+        interval_hours (int): Interval between time slots in hours (default is 6 for ERA5 slots).
 
-        year = pd.Timestamp(current_date).year
-        for lat_idx, lat in enumerate(lat_range):
-            for lon_idx, lon in enumerate(lon_range):
+    Returns:
+        datetime: The timestamp rounded to the nearest time slot based on the given interval.
+    """
+    time_slots = [
+        (datetime.min + timedelta(hours=i)).time() for i in range(0, 24, interval_hours)
+    ]
 
-                ndvi_at_location = land_dataset[
-                    (land_dataset["Latitude"] == lat)
-                    & (land_dataset["Longitude"] == lon)
-                    & (land_dataset["Variable"] == "NDVI")
-                ]
-
-                if not ndvi_at_location.empty:
-                    ndvi_value = ndvi_at_location.get(str(year), pd.NA)
-                    if ndvi_value is not pd.NA:
-                        land_variables["NDVI"][t, lat_idx, lon_idx] = torch.tensor(
-                            ndvi_value.values[0], dtype=torch.float16
-                        )
-
-                land_at_location = land_dataset[
-                    (land_dataset["Latitude"] == lat)
-                    & (land_dataset["Longitude"] == lon)
-                    & (land_dataset["Variable"] == "Land")
-                ]
-                if not land_at_location.empty:
-                    land_value = land_at_location.get(str(year), pd.NA)
-                    if land_value is not pd.NA:
-                        land_variables["Land"][t, lat_idx, lon_idx] = torch.tensor(
-                            land_value.values[0], dtype=torch.float16
-                        )
-
-                agriculture_at_location = agriculture_dataset[
-                    (agriculture_dataset["Latitude"] == lat)
-                    & (agriculture_dataset["Longitude"] == lon)
-                ]
-
-                if not agriculture_at_location.empty:
-                    agri_land_row = agriculture_at_location[
-                        agriculture_at_location["Variable"] == "Agriculture"
-                    ]
-                    if not agri_land_row.empty:
-                        for var, field in [
-                            ("Agriculture", "AgricultureLand"),
-                            ("Agriculture_Irrigated", "AgricultureIrrLand"),
-                            ("Arable", "ArableLand"),
-                            ("Cropland", "Cropland"),
-                        ]:
-                            agri_row = agriculture_at_location[
-                                agriculture_at_location["Variable"] == var
-                            ]
-                            if not agri_row.empty:
-                                agri_value = agri_row.get(f"Agri_{year}", pd.NA)
-                                if agri_value is not pd.NA:
-                                    agriculture_variables[field][
-                                        t, lat_idx, lon_idx
-                                    ] = torch.tensor(
-                                        agri_value.values[0], dtype=torch.float16
-                                    )
-
-                forest_at_location = forest_dataset[
-                    (forest_dataset["Latitude"] == lat)
-                    & (forest_dataset["Longitude"] == lon)
-                ]
-
-                if not forest_at_location.empty:
-                    forest_value = forest_at_location.get(f"Forest_{year}", pd.NA)
-                    if forest_value is not pd.NA:
-                        forest_variables["Forest"][t, lat_idx, lon_idx] = torch.tensor(
-                            forest_value.values[0], dtype=torch.float16
-                        )
-
-                extinction_at_location = species_extinction_dataset[
-                    (species_extinction_dataset["Latitude"] == lat)
-                    & (species_extinction_dataset["Longitude"] == lon)
-                ]
-                if not extinction_at_location.empty:
-                    extinction_value = extinction_at_location.get(f"RLI_{year}", pd.NA)
-                    if extinction_value is not pd.NA:
-                        species_extinction_variables["ExtinctionValue"][
-                            t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            extinction_value.values[0], dtype=torch.float16
-                        )
-
-                # # Get all species distributions for the current lat/lon
-                # distribution_at_location = species_distribution_dataset[
-                #     (species_distribution_dataset["lat"] == lat)
-                #     & (species_distribution_dataset["lon"] == lon)
-                # ]
-
-                # if not distribution_at_location.empty:
-                #     for _, row in distribution_at_location.iterrows():
-                #         species_name = row["species"]  # Get the species name
-                #         if species_name not in species_distribution_variables:
-                #             # Initialize tensor for this species if not already present
-                #             species_distribution_variables[species_name] = torch.zeros(
-                #                 (t, len(lat_range), len(lon_range)), dtype=torch.float16
-                #             )
-                #         # Get the distribution value for the current year
-                #         distribution_value = row.get(str(year), pd.NA)
-                #         if distribution_value is not pd.NA:
-                #             species_distribution_variables[species_name][
-                #                 t, lat_idx, lon_idx
-                #             ] = torch.tensor(distribution_value, dtype=torch.float16)
-
-    first_timestamp = dates[0]
-    second_timestamp = dates[1]
-
-    batch = DataBatch(
-        surface_variables=surfaces_variables,
-        single_variables=single_variables,
-        atmospheric_variables=atmospheric_variables,
-        # species_variables=species_variables,
-        # species_distribution_variables=species_distribution_variables,
-        species_extinction_variables=species_extinction_variables,
-        land_variables=land_variables,
-        agriculture_variables=agriculture_variables,
-        forest_variables=forest_variables,
-        batch_metadata=BatchMetadata(
-            latitudes=torch.tensor(lat_range),
-            longitudes=torch.tensor(lon_range),
-            timestamp=(first_timestamp, second_timestamp),
-            pressure_levels=pressure_levels,
+    species_time_only = species_time.time()
+    closest_time = min(
+        time_slots,
+        key=lambda t: abs(
+            timedelta(hours=species_time_only.hour, minutes=species_time_only.minute)
+            - timedelta(hours=t.hour)
         ),
     )
 
-    target_dtype = torch.float32
-    target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    batch = preprocess_era5(
-        batch,
-        dtype=target_dtype,
-        device=target_device,
-        locations=locations,
-        scales=scales,
+    return species_time.replace(
+        hour=closest_time.hour, minute=0, second=0, microsecond=0
     )
 
-    return batch
 
-
-def create_batches(
-    surface_dataset: xr.Dataset,
-    single_dataset: xr.Dataset,
-    atmospheric_dataset: xr.Dataset,
-    # species_dataset: pd.DataFrame,
-    species_extinction_dataset: pd.DataFrame,
-    land_dataset: pd.DataFrame,
-    agriculture_dataset: pd.DataFrame,
-    forest_dataset: pd.DataFrame,
-    load_type: str = "day-by-day",
-) -> list[DataBatch]:
+def crop_lat_lon(
+    lat_range: np.ndarray, lon_range: np.ndarray, crop_lat_n: int, crop_lon_n: int
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Create DataBatches by merging xarray-based ERA5 climate data with species data for each timestamp.
+    Crop latitude and longitude arrays to keep only the first 'crop_lat_n' for latitude
+    and 'crop_lon_n' for longitude.
 
     Args:
-        surface_dataset (xarray.Dataset): The surface-level ERA5 dataset.
-        single_dataset (xarray.Dataset): The single-level ERA5 dataset.
-        atmospheric_dataset (xarray.Dataset): The pressure-level ERA5 dataset.
-        species_dataset (pd.DataFrame): DataFrame containing species data.
-        load_type (str): Load type can be 'day-by-day' or 'large-file'. Default is 'day-by-day'.
+        lat_range (np.ndarray): Array of latitude values.
+        lon_range (np.ndarray): Array of longitude values.
+        crop_lat_n (int): Number of latitude values to keep.
+        crop_lon_n (int): Number of longitude values to keep.
 
     Returns:
-        list[DataBatch]: A list of DataBatch objects containing both climate and species data.
+        Tuple[np.ndarray, np.ndarray]: Cropped arrays of latitude and longitude values.
     """
+    cropped_lat_range = lat_range[: min(len(lat_range), crop_lat_n)]
+    cropped_lon_range = lon_range[: min(len(lon_range), crop_lon_n)]
 
-    # species_dataset["Longitude"] = species_dataset["Longitude"].apply(
-    #     lambda lon: (lon + 360) % 360 if lon < 0 else lon
-    # )
-
-    def initialize_data(crop_lat_n=None, crop_lon_n=None):
-        """
-        Initialize common ranges, tensors, and return them.
-
-        Args:
-            crop_n (bool): If it is true, then crop the latitude and longitude arrays.
-        """
-
-        min_lon, min_lat, max_lon, max_lat = -30, 34.0, 50.0, 72.0
-
-        lat_range = np.arange(min_lat, max_lat + 0.25, 0.25)
-        lon_range = np.arange(min_lon, max_lon + 0.25, 0.25)
-
-        if crop_lat_n is not None or crop_lon_n is not None:
-            crop_lat_n = crop_lat_n if crop_lat_n is not None else len(lat_range)
-            crop_lon_n = crop_lon_n if crop_lon_n is not None else len(lon_range)
-            lat_range, lon_range = crop_lat_lon(
-                lat_range, lon_range, crop_lat_n, crop_lon_n
-            )
-
-        lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range)
-        T = 2
-        pressure_levels = 13
-
-        climate_tensors = initialize_climate_tensors(
-            lat_range, lon_range, T, pressure_levels
-        )
-        # species_tensors = initialize_species_tensors(lat_range, lon_range, T)
-        species_extinction_tensors = initialize_species_extinction_tensors(
-            lat_range, lon_range, T
-        )
-
-        land_tensors = initialize_land_tensors(lat_range, lon_range, T)
-        agriculture_tensors = initialize_agriculture_tensors(lat_range, lon_range, T)
-        forest_tensors = initialize_forest_tensors(lat_range, lon_range, T)
-
-        return (
-            lat_range,
-            lon_range,
-            climate_tensors,
-            # species_tensors,
-            species_extinction_tensors,
-            land_tensors,
-            agriculture_tensors,
-            forest_tensors,
-        )
-
-    def create_and_save_batch(
-        timestamps,
-        surfaces_variables,
-        single_variables,
-        atmospheric_variables,
-        # species_variables,
-        species_extinction_variables,
-        land_variables,
-        agriculture_variables,
-        forest_variables,
-    ):
-        """Create a batch and save it to disk."""
-
-        date1 = timestamps[0].strftime("%Y-%m-%d")
-        date2 = timestamps[1].strftime("%Y-%m-%d")
-        batch_file = os.path.join(paths.BATCHES_DATA_DIR, f"batch_{date1}_{date2}.pt")
-
-        print(batch_file)
-
-        if os.path.exists(batch_file):
-            print(f"Batch for {date1} to {date2} already exists. Skipping...")
-            return None
-
-        batch = create_batch(
-            dates=timestamps,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            surface_dataset=surface_dataset,
-            single_dataset=single_dataset,
-            atmospheric_dataset=atmospheric_dataset,
-            # species_dataset=species_subset,
-            species_extinction_dataset=species_extinction_dataset,
-            land_dataset=land_dataset,
-            forest_dataset=forest_dataset,
-            agriculture_dataset=agriculture_dataset,
-            surfaces_variables=surfaces_variables,
-            single_variables=single_variables,
-            atmospheric_variables=atmospheric_variables,
-            # species_variables=species_variables,
-            species_extinction_variables=species_extinction_variables,
-            land_variables=land_variables,
-            agriculture_variables=agriculture_variables,
-            forest_variables=forest_variables,
-        )
-
-        os.makedirs(os.path.dirname(batch_file), exist_ok=True)
-        torch.save(batch, batch_file)
-        return batch
-
-    (
-        lat_range,
-        lon_range,
-        climate_tensors,
-        # species_tensors,
-        species_extinction_tensors,
-        land_tensors,
-        agriculture_tensors,
-        forest_tensors,
-    ) = initialize_data()
-    surfaces_variables = climate_tensors["surface"]
-    single_variables = climate_tensors["single"]
-    atmospheric_variables = climate_tensors["atmospheric"]
-    # species_variables = species_tensors
-    species_extinction_variables = species_extinction_tensors
-    land_variables = land_tensors
-    agriculture_variables = agriculture_tensors
-    forest_variables = forest_tensors
-
-    batches = []
-
-    if load_type == "day-by-day":
-        start_date = np.datetime64("2000-01-01T00:00:00", "s")
-
-        climate_timestamps = set(
-            surface_dataset["valid_time"].values.astype("datetime64[s]").tolist()
-        )
-
-        climate_timestamps = {t for t in climate_timestamps if t >= start_date}
-        print(climate_timestamps)
-        if climate_timestamps:
-
-            sorted_timestamps: List[Tuple[datetime.datetime]] = [
-                (t) for t in sorted(climate_timestamps)
-            ]
-            print(sorted_timestamps)
-
-            # min_timestamp = min(climate_timestamps)
-            # max_timestamp = max(climate_timestamps)
-
-            # species_subset = species_dataset[
-            #     (
-            #         species_dataset["Timestamp"].apply(
-            #             lambda x: x[0] if isinstance(x, tuple) else x
-            #         )
-            #         >= min_timestamp
-            #     )
-            #     & (
-            #         species_dataset["Timestamp"].apply(
-            #             lambda x: x[0] if isinstance(x, tuple) else x
-            #         )
-            #         <= max_timestamp
-            #     )
-            # ]
-
-            # timestamps = merge_timestamps(surface_dataset, species_subset)
-
-            batch = create_and_save_batch(
-                # timestamps[:2],
-                sorted_timestamps,
-                surfaces_variables,
-                single_variables,
-                atmospheric_variables,
-                # species_variables,
-                species_extinction_variables,
-                land_variables,
-                agriculture_variables,
-                forest_variables,
-            )
-
-            if batch is not None:
-                return batch
-
-        # elif load_type == "large-file":
-        #     timestamps = merge_timestamps(surface_dataset, species_dataset)
-
-        #     for i in range(len(timestamps) - 1):
-        #         timestamp_pair = timestamps[i : i + 2]
-
-        #         species_subset = species_dataset[
-        #             (species_dataset["Timestamp"] >= timestamp_pair[0])
-        #             & (species_dataset["Timestamp"] < timestamp_pair[1])
-        #         ]
-
-        #         batch = create_and_save_batch(
-        #             timestamp_pair,
-        #             surfaces_variables,
-        #             single_variables,
-        #             atmospheric_variables,
-        #             species_variables,
-        #             species_extinction_variables,
-        #             land_variables,
-        #             agriculture_variables,
-        #             forest_variables,
-        #         )
-
-        #         if batch is not None:
-        #             batches.append(batch)
-
-        #         reset_climate_tensors(
-        #             surfaces_variables, single_variables, atmospheric_variables
-        #         )
-        #         reset_tensors(species_variables)
-        #         reset_tensors(species_extinction_variables)
-        #         reset_tensors(land_variables)
-        #         reset_tensors(agriculture_variables)
-        #         reset_tensors(forest_variables)
-
-        return batches
+    return cropped_lat_range, cropped_lon_range
 
 
-def create_dataset(
-    species_file: str,
-    era5_directory: str,
-    load_type: str = "day-by-day",
-    surface_file: str = None,
-    single_file: str = None,
-    atmospheric_file: str = None,
-    agriculture_file: str = None,
-    land_file: str = None,
-    forest_file: str = None,
-    species_extinction_file: str = None,
-) -> list[DataBatch]:
+def rescale_sort_lat_lon(
+    lat_range: np.ndarray, lon_range: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Create DataBatches from the multimodal and ERA5 datasets and save the resulting batches
-    and batch metadata for future use.
+    Rescale longitude values to [0, 360] and sort both latitude and longitude arrays.
 
     Args:
-        species_file (str): Path to the Parquet file for multimodal data.
-        era5_directory (str): Directory containing sorted ERA5 NetCDF files (one per day).
-        load_type (str): Specifies whether to load files 'day-by-day' or 'large-file'.
-        surface_file (str): Path to the ERA5 surface dataset. (large file option)
-        single_file (str): Path to the ERA5 single-level dataset. (large file option)
-        atmospheric_file (str): Path to the ERA5 pressure-level dataset. (large file option)
-        agriculture_file (str): Path to the csv file for agriculture data.
-        land_file (str): Path to the csv file for land data.
-        forest_file (str): Path to the csv file for forest data.
-        species_extinction_file (str): Path to the csv file for species extinction data.
+        lat_range (np.ndarray): Array containing latitude values.
+        lon_range (np.ndarray): Array containing longitude values.
 
     Returns:
-        None.
+        Tuple[np.ndarray, np.ndarray]: Sorted arrays of latitude and rescaled longitude values.
     """
-    # species_dataset = load_species_data(species_file)
-    agriculture_dataset = load_world_bank_data(agriculture_file)
-    land_dataset = load_world_bank_data(land_file)
-    forest_dataset = load_world_bank_data(forest_file)
-    species_extinction_dataset = load_world_bank_data(species_extinction_file)
+    lat_range_clean = [lat for lat in lat_range if not np.isnan(lat)]
+    sorted_lat_range = sorted(lat_range_clean, reverse=True)
 
-    if load_type == "day-by-day":
-        batches = []
+    lon_range_clean = [lon for lon in lon_range if not np.isnan(lon)]
+    lon_range_rescaled = [
+        (lon + 360) % 360 if lon < 0 else lon for lon in lon_range_clean
+    ]
+    sorted_lon_range = sorted(lon_range_rescaled)
 
-        grouped_files = load_era5_files_grouped_by_date(era5_directory)
+    lat_range = np.array(sorted_lat_range)
+    lon_range = np.array(sorted_lon_range)
+    lat_range = lat_range.astype(float)
+    lon_range = lon_range.astype(float)
 
-        for i in range(0, len(grouped_files) - 1, 2):
-            (
-                atmospheric_dataset_day1,
-                single_dataset_day1,
-                surface_dataset_day1,
-            ) = grouped_files[i]
-            (
-                atmospheric_dataset_day2,
-                single_dataset_day2,
-                surface_dataset_day2,
-            ) = grouped_files[i + 1]
+    return lat_range, lon_range
 
-            batch = create_batch_for_pair_of_days(
-                atmospheric_dataset_day1,
-                single_dataset_day1,
-                surface_dataset_day1,
-                atmospheric_dataset_day2,
-                single_dataset_day2,
-                surface_dataset_day2,
-                # species_dataset,
-                agriculture_dataset,
-                forest_dataset,
-                land_dataset,
-                species_extinction_dataset,
-            )
-            if batch is not None:
-                batches.append(batch)
 
-    elif load_type == "large-file":
+def merge_timestamps(
+    climate_dataset: xr.Dataset, species_dataset: pd.DataFrame
+) -> List[datetime]:
+    """
+    Merge timestamps from the xarray climate dataset and species data.
 
+    Args:
+        climate_dataset (xarray.Dataset): Dataset containing climate variables with timestamps.
+        species_dataset (pd.DataFrame): DataFrame containing species variables with timestamps.
+
+    Returns:
+        List[Tuple[datetime.datetime]]: Sorted list of all unique timestamps from both datasets in tuple format.
+    """
+    climate_timestamps = {
+        (pd.to_datetime(ts).to_pydatetime(),)
+        for ts in set(
+            climate_dataset["valid_time"].values.astype("datetime64[s]").tolist()
+        )
+        if ts is not None
+    }
+
+    species_timestamps = {
         (
-            surface_dataset,
-            single_dataset,
-            atmospheric_dataset,
-        ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
+            (pd.to_datetime(ts[0]).to_pydatetime(),)
+            if isinstance(ts, tuple)
+            else (pd.to_datetime(ts).to_pydatetime(),)
+        )
+        for ts in species_dataset["Timestamp"].unique()
+        if ts is not None and pd.notna(ts)
+    }
 
-        batches = create_batches(
-            surface_dataset=surface_dataset,
-            single_dataset=single_dataset,
-            atmospheric_dataset=atmospheric_dataset,
-            # species_dataset=species_dataset,
-            agriculture_dataset=agriculture_dataset,
-            forest_dataset=forest_dataset,
-            land_dataset=land_dataset,
-            species_extinction_dataset=species_extinction_dataset,
+    all_timestamps = sorted(climate_timestamps | species_timestamps)
+
+    return all_timestamps
+
+
+# def initialize_climate_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     pressure_levels: int = 13,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, Dict[str, torch.Tensor]]:
+#     """
+#     Initialize sparse tensors for climate data, including surface, single, and atmospheric variables.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         pressure_levels (int): Number of pressure levels for atmospheric variables.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, Dict[str, torch.Tensor]]: Dictionary of initialized sparse tensors for climate data.
+#     """
+
+#     Create empty indices and values for sparse tensors
+#     def create_empty_sparse_tensor(shape, dtype=torch.float32):
+#         sparse_dim = len(shape)
+#         indices = torch.empty((sparse_dim, 0), dtype=torch.int64)  # No non-zero entries
+#         values = torch.empty((0,), dtype=dtype)  # No non-zero values
+#         return torch.sparse_coo_tensor(indices, values, shape, dtype=dtype)
+
+#     # Define shapes for surface and single variables (3D tensors)
+#     surface_shape = (T, len(lat_range), len(lon_range))
+#     single_shape = (T, len(lat_range), len(lon_range))
+
+#     # Define shapes for atmospheric variables (4D tensors)
+#     atmospheric_shape = (T, pressure_levels, len(lat_range), len(lon_range))
+
+#     return {
+#         "surface": {
+#             "t2m": create_empty_sparse_tensor(surface_shape),
+#             "msl": create_empty_sparse_tensor(surface_shape),
+#         },
+#         "single": {
+#             "lsm": create_empty_sparse_tensor(single_shape),
+#         },
+#         "atmospheric": {
+#             "z": create_empty_sparse_tensor(atmospheric_shape),
+#             "t": create_empty_sparse_tensor(atmospheric_shape),
+#         },
+#     }
+
+
+def initialize_climate_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    pressure_levels: int = 13,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, torch.Tensor]:
+    """
+    Create tensors for surface, atmospheric, and single variables based on the dataset's variables, initialized with a placeholder value (NaN by default).
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        pressure_levels (int): Number of pressure levels for atmospheric variables.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+
+    Returns:
+        Dict[str, Dict[str, torch.Tensor]]: Dictionary of initialized tensors for climate data.
+    """
+
+    return {
+        "surface": {
+            "t2m": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "msl": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            # "u10": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+            # "v10": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+        },
+        "single": {
+            # "z": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+            "lsm": torch.full(
+                (T, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            # "slt": torch.full(
+            #     (T, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+        },
+        "atmospheric": {
+            "z": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            "t": torch.full(
+                (T, pressure_levels, len(lat_range), len(lon_range)),
+                placeholder_value,
+                dtype=torch.float32,
+            ),
+            # "u": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+            # "v": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+            # "q": torch.full(
+            #     (T, pressure_levels, len(lat_range), len(lon_range)),
+            #     placeholder_value,
+            #     dtype=torch.float32,
+            # ),
+        },
+    }
+
+
+# def initialize_species_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     num_species: int,
+#     placeholder_value: float = float("nan"),
+# ) -> Dict[str, Dict[str, torch.Tensor]]:
+#     """
+#     Initialize tensors for species data: dense for dynamic variables and sparse for metadata.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         num_species (int): Number of unique species (or metadata categories).
+#         placeholder_value (float): Value to initialize tensors with (default: NaN).
+
+#     Returns:
+#         Dict[str, Dict[str, torch.Tensor]]: Dictionary with dynamic and metadata variables.
+#     """
+#     dynamic_shapes = {
+#         "Description": (64, 64),  # Dense
+#         "eDNA": (256,),          # Dense
+#         "Distribution": (),      # Dense
+#     }
+
+#     dynamic_tensors = {}
+#     for var, var_shape in dynamic_shapes.items():
+#         extended_shape = (T, len(lat_range), len(lon_range), num_species, *var_shape)
+#         dynamic_tensors[var] = torch.full(
+#             extended_shape, placeholder_value, dtype=torch.float32
+#         )
+
+#     metadata_tensors = {}
+#     for meta_name in ["Phylum", "Class", "Order", "Family", "Genus", "Redlist"]:
+#         metadata_tensors[meta_name] = torch.sparse_coo_tensor(
+#             torch.empty((4, 0), dtype=torch.int64),  # Initialize empty sparse tensor
+#             torch.empty((0,), dtype=torch.float16),
+#             (T, len(lat_range), len(lon_range), num_species),
+#         )
+
+#     return {"dynamic": dynamic_tensors, "metadata": metadata_tensors}
+
+
+def initialize_species_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    num_species: int,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, Dict[str, torch.Tensor]]:
+    """
+    Initialize tensors for species data, separating dynamic time-series variables
+    and static metadata variables.
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        num_species (int): Number of unique species (or metadata categories).
+        placeholder_value (float): Value to initialize tensors with (default: NaN).
+
+    Returns:
+        Dict[str, Dict[str, torch.Tensor]]: Dictionary with dynamic tensors and static metadata.
+    """
+    dynamic_shapes = {
+        # "Image": (3, 64, 64),
+        # "Audio": (1, 13, 1),
+        "Description": (64, 64),
+        "eDNA": (256,),
+        "Distribution": (),
+    }
+
+    dynamic_tensors = {}
+    for var, var_shape in dynamic_shapes.items():
+        extended_shape = (T, len(lat_range), len(lon_range), num_species, *var_shape)
+        dynamic_tensors[var] = torch.full(
+            extended_shape,
+            placeholder_value,
+            dtype=torch.float64 if var != "eDNA" else torch.float16,
         )
 
+    metadata_tensors = {
+        "Phylum": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        "Class": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        "Order": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        "Family": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        "Genus": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+        "Redlist": torch.full(
+            (T, len(lat_range), len(lon_range), num_species),
+            placeholder_value,
+            dtype=torch.float16,
+        ),
+    }
 
-def create_batch_for_pair_of_days(
-    atmospheric_dataset_day1,
-    single_dataset_day1,
-    surface_dataset_day1,
-    atmospheric_dataset_day2,
-    single_dataset_day2,
-    surface_dataset_day2,
-    # species_dataset,
-    agriculture_dataset,
-    forest_dataset,
-    land_dataset,
-    species_extinction_dataset,
+    return {"dynamic": dynamic_tensors, "metadata": metadata_tensors}
+
+
+# def initialize_species_extinction_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensor for extinct species data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensor for extinct species data.
+#     """
+#     # Shape of the extinction value tensor
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create the sparse tensor
+#     extinction_value = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {"ExtinctionValue": extinction_value}
+
+
+def initialize_species_extinction_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, torch.Tensor]:
+    """
+    Create tensors for extinct species data, initialized with a placeholder value (NaN by default).
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for extinct species data.
+    """
+    return {
+        "ExtinctionValue": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+    }
+
+
+# def initialize_land_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for land data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensors for land data.
+#     """
+#     # Shape of the land and NDVI tensors
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create sparse tensors
+#     land_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+#     ndvi_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {
+#         "Land": land_tensor,
+#         "NDVI": ndvi_tensor,
+#     }
+
+
+def initialize_land_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, torch.Tensor]:
+    """
+    Create tensors for land data, initialized with a placeholder value (NaN by default).
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for land data.
+    """
+    return {
+        "Land": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "NDVI": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+    }
+
+
+# def initialize_agriculture_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for agriculture data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+# Returns:
+#     Dict[str, torch.Tensor]: Sparse tensors for agriculture data.
+# """
+# # Shape of the agriculture tensors
+# shape = (T, len(lat_range), len(lon_range))
+
+# # Initialize empty indices and values for sparse tensor
+# indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+# values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+# # Create sparse tensors
+# agriculture_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# agriculture_irr_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# arable_land = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+# cropland = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+# return {
+#     "AgricultureLand": agriculture_land,
+#     "AgricultureIrrLand": agriculture_irr_land,
+#     "ArableLand": arable_land,
+#     "Cropland": cropland,
+# }
+
+
+def initialize_agriculture_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, torch.Tensor]:
+    """
+    Create tensors for agriculture data, initialized with a placeholder value (NaN by default).
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for agriculture data.
+    """
+    return {
+        "AgricultureLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "AgricultureIrrLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "ArableLand": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+        "Cropland": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+    }
+
+
+# def initialize_forest_tensors(
+#     lat_range: np.ndarray,
+#     lon_range: np.ndarray,
+#     T: int,
+#     placeholder_value: float = 0.0,
+# ) -> Dict[str, torch.Tensor]:
+#     """
+#     Initialize sparse tensors for forest data.
+
+#     Args:
+#         lat_range (np.ndarray): Latitude range.
+#         lon_range (np.ndarray): Longitude range.
+#         T (int): Number of timestamps.
+#         placeholder_value (float): Placeholder value for sparse initialization (default: 0.0).
+
+#     Returns:
+#         Dict[str, torch.Tensor]: Sparse tensor for forest data.
+#     """
+#     # Shape of the forest tensor
+#     shape = (T, len(lat_range), len(lon_range))
+
+#     # Initialize empty indices and values for sparse tensor
+#     indices = torch.empty((3, 0), dtype=torch.int64)  # 3 sparse dimensions: T, lat, lon
+#     values = torch.empty((0,), dtype=torch.float16)   # No non-zero values
+
+#     # Create sparse tensor
+#     forest_tensor = torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float16)
+
+#     return {
+#         "Forest": forest_tensor,
+#     }
+
+
+def initialize_forest_tensors(
+    lat_range: np.ndarray,
+    lon_range: np.ndarray,
+    T: int,
+    placeholder_value: float = float("nan"),
+) -> Dict[str, torch.Tensor]:
+    """
+    Create tensors for forest data, initialized with a placeholder value (NaN by default).
+
+    Args:
+        lat_range (np.ndarray): Latitude range.
+        lon_range (np.ndarray): Longitude range.
+        T (int): Number of timestamps.
+        placeholder_value (float): Value to initialize tensors with. Default is NaN.
+
+    Returns:
+        Dict[str, torch.Tensor]: Dictionary of initialized tensors for forest data.
+    """
+    return {
+        "Forest": torch.full(
+            (T, len(lat_range), len(lon_range)), placeholder_value, dtype=torch.float16
+        ),
+    }
+
+
+def reset_climate_tensors(
+    surfaces_variables: dict,
+    single_variables: dict,
+    atmospheric_variables: dict,
+    placeholder_value: float,
 ):
-    valid_files = process_netcdf_files(
-        [
-            atmospheric_dataset_day1,
-            single_dataset_day1,
-            surface_dataset_day1,
-            atmospheric_dataset_day2,
-            single_dataset_day2,
-            surface_dataset_day2,
-        ]
-    )
+    """
+    Reset the climate-related tensors to zero. This function iterates over the dictionary of variables
+    and sets each tensor to zero, ensuring that no previous values remain for further computations.
 
-    if len(valid_files) < 6:
-        print(f"Skipping date due to missing or invalid files.")
-        return
+    Args:
+        surfaces_variables (dict): Dictionary of surface variable tensors.
+        single_variables (dict): Dictionary of single-level variable tensors.
+        atmospheric_variables (dict): Dictionary of atmospheric variable tensors.
+        placeholder_value (float): Value to reset tensors with. Default is NaN.
+    """
+    for var_name, tensor in surfaces_variables.items():
+        surfaces_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
-    atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
-    single_dataset_day1 = xr.open_dataset(single_dataset_day1)
-    surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
+    for var_name, tensor in single_variables.items():
+        single_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
-    atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2)
-    single_dataset_day2 = xr.open_dataset(single_dataset_day2)
-    surface_dataset_day2 = xr.open_dataset(surface_dataset_day2)
+    for var_name, tensor in atmospheric_variables.items():
+        atmospheric_variables[var_name] = torch.full_like(tensor, placeholder_value)
 
-    atmospheric_dataset = xr.concat(
-        [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
-    )
-    single_dataset = xr.concat(
-        [single_dataset_day1, single_dataset_day2], dim="valid_time"
-    )
-    surface_dataset = xr.concat(
-        [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
-    )
 
-    batch = create_batches(
-        surface_dataset=surface_dataset,
-        single_dataset=single_dataset,
-        atmospheric_dataset=atmospheric_dataset,
-        # species_dataset=species_dataset,
-        agriculture_dataset=agriculture_dataset,
-        forest_dataset=forest_dataset,
-        land_dataset=land_dataset,
-        species_extinction_dataset=species_extinction_dataset,
-    )
+def reset_tensors(variables: dict, placeholder_value: float = float("nan")):
+    """
+    Reset the tensors to the placeholder value. This function sets all values to the specified placeholder (NaN by default).
 
-    atmospheric_dataset_day1.close()
-    single_dataset_day1.close()
-    surface_dataset_day1.close()
-    atmospheric_dataset_day2.close()
-    single_dataset_day2.close()
-    surface_dataset_day2.close()
+    Args:
+        variables (dict): Dictionary of tensors.
+        placeholder_value (float): Value to reset tensors with. Default is NaN.
+    """
+    for var_name, tensor in variables.items():
+        variables[var_name] = torch.full_like(tensor, placeholder_value)
+
+
+def preprocess_era5(
+    batch: DataBatch,
+    dtype: torch.dtype,
+    device: torch.device,
+    locations: Dict[str, float],
+    scales: Dict[str, float],
+    # crop_mode: str = "truncate",
+) -> DataBatch:
+    """
+    Prepares the batch by applying data type conversion, normalization, cropping,
+    and transferring the batch to the specified device.
+
+    Args:
+        batch (DataBatch): The input batch containing data.
+        dtype (torch.dtype): The target data type for the batch.
+        device (torch.device): The device to which the batch should be transferred (e.g., CPU or GPU).
+        locations (Dict[str, float]): A dictionary where the key is the variable name
+                                    and the value is the mean for that variable.
+        scales (Dict[str, float]): A dictionary where the key is the variable name
+                                        and the value is the standard deviation for that variable.
+        crop_mode (str): The mode for adjusting the batch dimensions ('truncate' or 'pad').
+
+    Returns:
+        DataBatch: The prepared batch ready for use in the model.
+    """
+    batch = batch.type(dtype)
+    batch = batch.normalize_data(locations, scales)
+    # patch_size = 4
+    # batch = batch.crop(patch_size=patch_size, mode=crop_mode)
+    batch = batch.to(device)
 
     return batch
+
+
+def is_valid_netcdf(file_path: str) -> bool:
+    """
+    Check if a NetCDF file is valid and can be opened without errors.
+
+    Args:
+        file_path (str): Path to the NetCDF file.
+
+    Returns:
+        bool: True if the file is valid, False otherwise.
+    """
+    try:
+        with xr.open_dataset(file_path) as ds:
+            ds.load()
+        return True
+    except Exception as e:
+        print(f"Invalid NetCDF file: {file_path} | Error: {e}")
+        return False
+
+
+def process_netcdf_files(file_paths: list) -> list:
+    """
+    Process a list of NetCDF files, skipping invalid ones.
+
+    Args:
+        file_paths (list): List of NetCDF file paths.
+
+    Returns:
+        valid_files (list): List of valid files.
+    """
+    valid_files = []
+    for file_path in file_paths:
+        if is_valid_netcdf(file_path):
+            valid_files.append(file_path)
+        else:
+            print(f"Skipping invalid file: {file_path}")
+
+    return valid_files

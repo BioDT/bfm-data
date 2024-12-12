@@ -124,3 +124,21 @@ def get_country_bounding_box(country_or_iso: str) -> tuple:
     bounding_boxes = get_bounding_boxes_for_countries([iso_code])
 
     return bounding_boxes.get(iso_code) or bounding_boxes.get(country_name)
+
+
+def get_country_name_from_iso(iso_code: str) -> str:
+    """
+    Get the country name from its ISO code.
+
+    Args:
+        iso_code (str): The ISO code of the country (e.g., 'FR').
+
+    Returns:
+        str: The name of the country, or 'Unknown' if not found.
+    """
+    try:
+        country = pycountry.countries.get(alpha_2=iso_code.upper())
+        return country.name if country else "Unknown"
+    except Exception as e:
+        print(f"Error retrieving country name for ISO code {iso_code}: {e}")
+        return "Unknown"

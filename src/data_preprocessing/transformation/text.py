@@ -1,20 +1,48 @@
 # src/data_preprocessing/transformation/text.py
 
+import json
+import os
 import warnings
 
+import pandas as pd
 import torch
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder
 from transformers import BertModel, BertTokenizer
 
+from src.config import paths
+
 warnings.filterwarnings(
     "ignore", message=r"`clean_up_tokenization_spaces` was not set."
 )
 
+label_mappings = {}
 
-def label_encode(df, column_name):
+
+def load_mappings():
     """
-    Performs label encoding on a specific column of a DataFrame.
+    Load label mappings from a file if it exists, else initialize an empty dictionary.
+    """
+    global label_mappings
+    if os.path.exists(paths.MAPPING_FILE):
+        with open(paths.MAPPING_FILE, "r") as f:
+            label_mappings = json.load(f)
+    else:
+        label_mappings = {}
+
+
+def save_mappings():
+    """
+    Save label mappings to a file for persistence.
+    """
+    global label_mappings
+    with open(paths.MAPPING_FILE, "w") as f:
+        json.dump(label_mappings, f)
+
+
+def label_encode(df: pd.DataFrame, column_name: str):
+    """
+    Performs label encoding on a specific column of a DataFrame and saves the mapping.
 
     Args:
         df (pd.DataFrame): The DataFrame containing the column to be encoded.
@@ -23,8 +51,26 @@ def label_encode(df, column_name):
     Returns:
         torch.Tensor: A tensor representing the label encoded column.
     """
-    label_encoder = LabelEncoder()
-    labels = label_encoder.fit_transform(df[column_name].astype(str).tolist())
+    global label_mappings
+
+    load_mappings()
+
+    if column_name not in label_mappings:
+        label_mappings[column_name] = {}
+
+    column_mapping = label_mappings[column_name]
+
+    labels = []
+    for value in df[column_name].astype(str).tolist():
+        if value not in column_mapping:
+            new_label = len(column_mapping)
+            column_mapping[value] = new_label
+        labels.append(column_mapping[value])
+
+    label_mappings[column_name] = column_mapping
+
+    save_mappings()
+
     return torch.tensor(labels, dtype=torch.long)
 
 

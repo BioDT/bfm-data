@@ -999,12 +999,12 @@ def get_paths_for_files_pairs_of_days(era5_directory: str) -> List[Tuple[Dict, D
 
 
 def create_batch_for_pair_of_days(
-    atmospheric_dataset_day1: str,
-    single_dataset_day1: str,
-    surface_dataset_day1: str,
-    atmospheric_dataset_day2: str,
-    single_dataset_day2: str,
-    surface_dataset_day2: str,
+    atmospheric_dataset_day1_path: str,
+    single_dataset_day1_path: str,
+    surface_dataset_day1_path: str,
+    atmospheric_dataset_day2_path: str,
+    single_dataset_day2_path: str,
+    surface_dataset_day2_path: str,
     species_dataset: pd.DataFrame,
     agriculture_dataset: pd.DataFrame,
     forest_dataset: pd.DataFrame,
@@ -1012,12 +1012,12 @@ def create_batch_for_pair_of_days(
     species_extinction_dataset: pd.DataFrame,
 ) -> DataBatch | None:
     all_files = [
-        atmospheric_dataset_day1,
-        single_dataset_day1,
-        surface_dataset_day1,
-        atmospheric_dataset_day2,
-        single_dataset_day2,
-        surface_dataset_day2,
+        atmospheric_dataset_day1_path,
+        single_dataset_day1_path,
+        surface_dataset_day1_path,
+        atmospheric_dataset_day2_path,
+        single_dataset_day2_path,
+        surface_dataset_day2_path,
     ]
     valid_files = process_netcdf_files(all_files)
 
@@ -1028,13 +1028,13 @@ def create_batch_for_pair_of_days(
         )
         return
 
-    atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1)
-    single_dataset_day1 = xr.open_dataset(single_dataset_day1)
-    surface_dataset_day1 = xr.open_dataset(surface_dataset_day1)
+    atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1_path)
+    single_dataset_day1 = xr.open_dataset(single_dataset_day1_path)
+    surface_dataset_day1 = xr.open_dataset(surface_dataset_day1_path)
 
-    atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2)
-    single_dataset_day2 = xr.open_dataset(single_dataset_day2)
-    surface_dataset_day2 = xr.open_dataset(surface_dataset_day2)
+    atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2_path)
+    single_dataset_day2 = xr.open_dataset(single_dataset_day2_path)
+    surface_dataset_day2 = xr.open_dataset(surface_dataset_day2_path)
 
     atmospheric_dataset = xr.concat(
         [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
@@ -1056,7 +1056,14 @@ def create_batch_for_pair_of_days(
         land_dataset=land_dataset,
         species_extinction_dataset=species_extinction_dataset,
     )
-    assert isinstance(batch, DataBatch)
+
+    atmospheric_dataset_day1.close()
+    single_dataset_day1.close()
+    surface_dataset_day1.close()
+    atmospheric_dataset_day2.close()
+    single_dataset_day2.close()
+    surface_dataset_day2.close()
+    
     return batch
 
 
@@ -1103,20 +1110,20 @@ def create_dataset(
         pair_of_days_paths = get_paths_for_files_pairs_of_days(era5_directory)
 
         for i, (day_1_path, day_2_paths) in enumerate(pair_of_days_paths):
-            atmospheric_dataset_day1 = day_1_path["atmospheric"]
-            single_dataset_day1 = day_1_path["single"]
-            surface_dataset_day1 = day_1_path["surface"]
-            atmospheric_dataset_day2 = day_2_paths["atmospheric"]
-            single_dataset_day2 = day_2_paths["single"]
-            surface_dataset_day2 = day_2_paths["surface"]
+            atmospheric_dataset_day1_path = day_1_path["atmospheric"]
+            single_dataset_day1_path = day_1_path["single"]
+            surface_dataset_day1_path = day_1_path["surface"]
+            atmospheric_dataset_day2_path = day_2_paths["atmospheric"]
+            single_dataset_day2_path = day_2_paths["single"]
+            surface_dataset_day2_path = day_2_paths["surface"]
 
             batch = create_batch_for_pair_of_days(
-                atmospheric_dataset_day1=atmospheric_dataset_day1,
-                single_dataset_day1=single_dataset_day1,
-                surface_dataset_day1=surface_dataset_day1,
-                atmospheric_dataset_day2=atmospheric_dataset_day2,
-                single_dataset_day2=single_dataset_day2,
-                surface_dataset_day2=surface_dataset_day2,
+                atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,
+                single_dataset_day1_path=single_dataset_day1_path,
+                surface_dataset_day1_path=surface_dataset_day1_path,
+                atmospheric_dataset_day2_path=atmospheric_dataset_day2_path,
+                single_dataset_day2_path=single_dataset_day2_path,
+                surface_dataset_day2_path=surface_dataset_day2_path,
                 species_dataset=species_dataset,
                 agriculture_dataset=agriculture_dataset,
                 forest_dataset=forest_dataset,
@@ -1126,13 +1133,6 @@ def create_dataset(
 
             if batch is not None:
                 batches.append(batch)
-
-            atmospheric_dataset_day1.close()
-            single_dataset_day1.close()
-            surface_dataset_day1.close()
-            atmospheric_dataset_day2.close()
-            single_dataset_day2.close()
-            surface_dataset_day2.close()
 
     elif load_type == "large-file":
 

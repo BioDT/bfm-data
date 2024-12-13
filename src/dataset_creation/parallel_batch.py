@@ -62,12 +62,12 @@ def run_single(index: int):
         return
 
     print("Selected data:", selected)
-    atmospheric_dataset_day1 = selected["day_1"]["atmospheric"]
-    single_dataset_day1 = selected["day_1"]["single"]
-    surface_dataset_day1 = selected["day_1"]["surface"]
-    atmospheric_dataset_day2 = selected["day_2"]["atmospheric"]
-    single_dataset_day2 = selected["day_2"]["single"]
-    surface_dataset_day2 = selected["day_2"]["surface"]
+    atmospheric_dataset_day1_path = selected["day_1"]["atmospheric"]
+    single_dataset_day1_path = selected["day_1"]["single"]
+    surface_dataset_day1_path = selected["day_1"]["surface"]
+    atmospheric_dataset_day2_path = selected["day_2"]["atmospheric"]
+    single_dataset_day2_path = selected["day_2"]["single"]
+    surface_dataset_day2_path = selected["day_2"]["surface"]
 
     species_dataset = load_species_data(species_file)
     agriculture_dataset = load_world_bank_data(agriculture_file)
@@ -76,12 +76,12 @@ def run_single(index: int):
     species_extinction_dataset = load_world_bank_data(species_extinction_file)
 
     create_batch_for_pair_of_days(
-        atmospheric_dataset_day1=atmospheric_dataset_day1,
-        single_dataset_day1=single_dataset_day1,
-        surface_dataset_day1=surface_dataset_day1,
-        atmospheric_dataset_day2=atmospheric_dataset_day2,
-        single_dataset_day2=single_dataset_day2,
-        surface_dataset_day2=surface_dataset_day2,
+        atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,
+        single_dataset_day1_path=single_dataset_day1_path,
+        surface_dataset_day1_path=surface_dataset_day1_path,
+        atmospheric_dataset_day2_path=atmospheric_dataset_day2_path,
+        single_dataset_day2_path=single_dataset_day2_path,
+        surface_dataset_day2_path=surface_dataset_day2_path,
         species_dataset=species_dataset,
         agriculture_dataset=agriculture_dataset,
         forest_dataset=forest_dataset,

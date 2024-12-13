@@ -11,8 +11,10 @@ def clean_sequence(sequence: str) -> str:
         sequence (str): Raw DNA sequence.
 
     Returns:
-        str: Cleaned DNA sequence.
+        str: Cleaned DNA sequence, or an empty string if input is invalid.
     """
+    if not isinstance(sequence, str):
+        return ""
     cleaned_sequence = re.sub(r"[^ATCG]", "", sequence.upper())
     return cleaned_sequence
 

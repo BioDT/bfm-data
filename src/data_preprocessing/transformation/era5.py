@@ -148,8 +148,8 @@ def get_mean_standard_deviation(
                     .sel(pressure_level=level)
                     .values
                 )
-                locations[f"{atmospheric_variable}_{level}"] = np.mean(data)
-                scales[f"{atmospheric_variable}_{level}"] = np.std(data)
+                locations[f"{atmospheric_variable}_{int(level)}"] = np.mean(data)
+                scales[f"{atmospheric_variable}_{int(level)}"] = np.std(data)
         else:
             print(f"Variable {atmospheric_variable} not found in the dataset.")
 

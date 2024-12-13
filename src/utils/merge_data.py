@@ -34,9 +34,12 @@ def average_coordinates_and_time(
     avg_lat = (image_lat + audio_lat) / 2
     avg_lon = (image_lon + audio_lon) / 2
 
-    image_time = pd.to_datetime(image_time)
-    audio_time = pd.to_datetime(audio_time)
-    avg_time = image_time + (audio_time - image_time) / 2
+    try:
+        image_time = pd.to_datetime(image_time, errors="raise")
+        audio_time = pd.to_datetime(audio_time, errors="raise")
+        avg_time = image_time + (audio_time - image_time) / 2
+    except (pd.errors.OutOfBoundsDatetime, OverflowError):
+        avg_time = pd.NaT
 
     return avg_lat, avg_lon, avg_time
 
@@ -75,6 +78,7 @@ def matching_image_audios(
                     "Latitude": avg_lat,
                     "Longitude": avg_lon,
                     "Timestamp": avg_time,
+                    "File_path": image_row["File_path"] + audio_row["File_path"],
                 }
             )
 
@@ -100,6 +104,12 @@ def extract_metadata_from_csv(metadata_file_path: str, file_type: str) -> dict:
             "Latitude": metadata["Latitude"].values[0],
             "Longitude": metadata["Longitude"].values[0],
             "Timestamp": metadata["Timestamp"].values[0],
+            "Kingdom": metadata["Kingdom"].values[0],
+            "Phylum": metadata["Phylum"].values[0],
+            "Class": metadata["Class"].values[0],
+            "Order": metadata["Order"].values[0],
+            "Family": metadata["Family"].values[0],
+            "Genus": metadata["Genus"].values[0],
         }
     elif file_type == "audio":
         return {
@@ -107,6 +117,12 @@ def extract_metadata_from_csv(metadata_file_path: str, file_type: str) -> dict:
             "Latitude": metadata["Latitude"].values[0],
             "Longitude": metadata["Longitude"].values[0],
             "Timestamp": metadata["Timestamp"].values[0],
+            "Kingdom": metadata["Kingdom"].values[0],
+            "Phylum": metadata["Phylum"].values[0],
+            "Class": metadata["Class"].values[0],
+            "Order": metadata["Order"].values[0],
+            "Family": metadata["Family"].values[0],
+            "Genus": metadata["Genus"].values[0],
         }
 
 
@@ -146,3 +162,81 @@ def extract_species_names(file_path: str) -> list:
             species_names.append(species_name)
 
     return species_names
+
+
+def find_closest_lat_lon(
+    target_lat: float, target_lon: float, distribution_df: pd.DataFrame
+) -> pd.Series:
+    """
+    Find the closest latitude and longitude entry in the distribution dataset to a specified target location.
+
+    Args:
+        target_lat (float): The latitude of the target location.
+        target_lon (float): The longitude of the target location.
+        distribution_df (pd.DataFrame): A DataFrame containing distribution data with 'Latitude' and 'Longitude' columns.
+
+    Returns:
+        pd.Series: The row in the distribution DataFrame that is closest to the target location, based on Euclidean distance.
+    """
+    distribution_df["Distance"] = (
+        (distribution_df["Latitude"] - target_lat) ** 2
+        + (distribution_df["Longitude"] - target_lon) ** 2
+    ) ** 0.5
+    closest_row = distribution_df.loc[distribution_df["Distance"].idxmin()]
+    return closest_row
+
+
+def merge_world_bank_data(file_paths: list, variable_names: list, output_path: str):
+    """
+    Main function to process world bank data like agriculture, forest, land files.
+    Processes globally if no region specified.
+
+    Args:
+        file_paths (list): Paths to the CSV files.
+        variable_names (list): Names of the variables for each file (to be added as a column).
+        output_path (str): Path to save the merged output CSV file.
+    """
+    data_frames = []
+
+    if len(file_paths) != len(variable_names):
+        raise ValueError("file_paths and variable_names must have the same length.")
+
+    for file_path, variable_name in zip(file_paths, variable_names):
+        df = pd.read_csv(file_path)
+        df.insert(0, "Variable", variable_name)
+        data_frames.append(df)
+
+    merged_df = pd.concat(data_frames, ignore_index=True)
+
+    merged_df.to_csv(output_path, index=False)
+    print(f"Merged data saved to {output_path}")
+
+
+def save_sorted_timestamps(parquet_file_path: str, output_csv_path: str) -> None:
+    """
+    Extracts, cleans, and sorts timestamps from a parquet file and saves them to a CSV.
+
+    Args:
+        parquet_file_path (str): Path to the input parquet file containing a 'Timestamp' column.
+        output_csv_path (str): Path to save the sorted timestamps as a CSV file.
+    """
+    df = pd.read_parquet(parquet_file_path)
+
+    if isinstance(df["Timestamp"].iloc[0], list):
+        df["Timestamp"] = df["Timestamp"].apply(
+            lambda x: x[0] if isinstance(x, list) and len(x) > 0 else None
+        )
+    else:
+        df["Timestamp"] = df["Timestamp"].astype(str).str.strip("[]'")
+
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+
+    df = df.dropna(subset=["Timestamp"])
+
+    if df.empty:
+        print("No valid timestamps found after conversion.")
+        return
+
+    sorted_df = df[["Timestamp"]].sort_values(by="Timestamp")
+    sorted_df.to_csv(output_csv_path, index=False)
+    print("Sorted timestamps saved to:", output_csv_path)

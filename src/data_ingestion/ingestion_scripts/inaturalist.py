@@ -6,7 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
-from src.config.paths import DATA_DIR
+from src.config import paths
 
 
 class iNaturalistDownloaderFromFile:
@@ -65,7 +65,7 @@ class iNaturalistDownloaderFromFile:
         categories = {category["id"]: category for category in data["categories"]}
 
         for image in data["images"]:
-            image_path = os.path.join(DATA_DIR, image["file_name"])
+            image_path = os.path.join(paths.DATA_DIR, image["file_name"])
 
             if not os.path.isfile(image_path):
                 print(f"Image file {image_path} not found, skipping...")
@@ -142,4 +142,20 @@ class iNaturalistDownloaderFromFile:
         print("Images have been successfully moved.")
 
 
-# TODO: Create run function
+def inaturalist(metadata: bool = False, move: bool = False):
+    """
+    Run the BOLDDownloader for barcode of life data.
+
+    Args:
+        metadata (bool): If True, create metadata files.
+        move (bool): If True, move the images from one directory to the major one.
+    """
+    inaturalist_downloader = iNaturalistDownloaderFromFile(
+        paths.INAT_2021_MINI_DIR, paths.INAT_2021_MINI_JSON, paths.DATA_DIR
+    )
+    if metadata:
+        inaturalist_downloader.create_metadata_files()
+    if move:
+        inaturalist_downloader.move_images()
+
+    print("iNaturalist operation completed.")

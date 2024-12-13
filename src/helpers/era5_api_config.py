@@ -33,12 +33,12 @@ class ERA5ApiConfigurator:
         Sets the user-input configuration for the ERA5 dataset.
         This function writes the provided URL and they uid with the key to a configuration file.
 
-        Parameters:
-        url (str): The URL to be written to the configuration file.
-        key (str): The key to be written to the configuration file.
+        Args:
+            url (str): The URL to be written to the configuration file.
+            key (str): The key to be written to the configuration file.
 
         Returns:
-        bool: True if the configuration was successfully written, False otherwise.
+            bool: True if the configuration was successfully written, False otherwise.
         """
         try:
             paths.ERA5_CONFIG_PATH.parent.mkdir(exist_ok=True, parents=True)

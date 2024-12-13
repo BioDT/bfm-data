@@ -7,7 +7,7 @@ from urllib import request
 
 from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.inaturalist import iNaturalistDownloader
-from src.data_preprocessing.preprocess import preprocess_image
+from src.data_preprocessing.preprocessing import preprocess_image
 
 
 class TestAudio(unittest.IsolatedAsyncioTestCase):

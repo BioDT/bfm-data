@@ -2,7 +2,7 @@
 
 import os
 
-from src.config.paths import ALL_MOD_PATHS, DATA_DIR
+from src.config.paths import DATA_DIR, MODALITY_FOLDER_DIR
 from src.data_ingestion.api_clients.downloader import Downloader
 from src.utils.merge_data import extract_species_names
 
@@ -21,6 +21,19 @@ class MOL(Downloader):
         """
         super().__init__(data_dir, "Life")
         self.base_url = "https://api.mol.org/1.x/species/info"
+
+    def get_all_species_names(self) -> list:
+        """
+        Collects all species names from each file within the modality folder directory.
+
+        Returns:
+            list: A list of unique species names.
+        """
+        all_species_names = set()
+        for file_path in MODALITY_FOLDER_DIR.glob("*.txt"):
+            species_names = extract_species_names(file_path)
+            all_species_names.update(species_names)
+        return list(all_species_names)
 
     def get_save_data(self, scientific_name: str):
         """
@@ -81,7 +94,7 @@ class MOL(Downloader):
         Returns:
             None
         """
-        species_names = extract_species_names(ALL_MOD_PATHS)
+        species_names = self.get_all_species_names()
 
         for scientific_name in species_names:
             self.get_save_data(scientific_name)
@@ -91,5 +104,5 @@ def mop():
     """
     Run the MOLDownloader for barcode of life data.
     """
-    bold_downloader = MOL(DATA_DIR)
-    bold_downloader.run()
+    mop_downloader = MOL(DATA_DIR)
+    mop_downloader.run()

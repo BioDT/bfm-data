@@ -1,9 +1,13 @@
 # src/monitoring_logging/monitoring/memory.py
 
+import sys
 import threading
 import time
 
 import psutil
+import torch
+
+from src.dataset_creation.batch import DataBatch
 
 
 def print_memory_usage():
@@ -54,3 +58,68 @@ def start_memory_monitoring(interval: int = 10):
         target=monitor_memory_usage, args=(interval,), daemon=True
     )
     monitoring_thread.start()
+
+
+def get_tensor_memory_size(tensor: torch.Tensor) -> int:
+    """
+    Calculate the memory size of a PyTorch tensor in bytes.
+
+    This function computes the memory size by multiplying the size of each element
+    in the tensor (in bytes) by the total number of elements.
+
+    Args:
+        tensor (torch.Tensor): The input tensor for which to calculate the memory size.
+
+    Returns:
+        int: The total memory size of the tensor in bytes.
+    """
+    return tensor.element_size() * tensor.nelement()
+
+
+def get_object_memory_size(obj) -> int:
+    """
+    Calculate the memory size of a Python object in bytes.
+
+    This function uses Python's `sys.getsizeof()` to determine the memory size
+    of any object except PyTorch tensors. It provides a quick way to measure
+    the memory footprint of objects in Python.
+
+    Args:
+        obj (object): The Python object for which to calculate the memory size.
+
+    Returns:
+        int: The memory size of the object in bytes.
+    """
+    return sys.getsizeof(obj)
+
+
+def get_data_batch_memory_size(batch: DataBatch) -> int:
+    """
+    Calculates the approximate memory usage of a DataBatch object, including all tensors.
+
+    Args:
+        batch (DataBatch): The DataBatch object.
+
+    Returns:
+        int: Total memory size in bytes.
+    """
+    total_memory = 0
+
+    for key, tensor in batch.surface_variables.items():
+        total_memory += get_tensor_memory_size(tensor)
+
+    for key, tensor in batch.single_variables.items():
+        total_memory += get_tensor_memory_size(tensor)
+
+    for key, tensor in batch.atmospheric_variables.items():
+        total_memory += get_tensor_memory_size(tensor)
+
+    for key, tensor in batch.species_variables.items():
+        total_memory += get_tensor_memory_size(tensor)
+
+    total_memory += get_tensor_memory_size(batch.batch_metadata.latitudes)
+    total_memory += get_tensor_memory_size(batch.batch_metadata.longitudes)
+
+    total_memory += get_object_memory_size(batch.batch_metadata.timestamp)
+
+    return total_memory

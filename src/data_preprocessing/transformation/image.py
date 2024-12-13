@@ -120,3 +120,20 @@ def equalize_histogram(image: Image.Image) -> Image.Image:
 
     equalized_image = Image.fromarray(equalized_image_np)
     return equalized_image
+
+
+def resize_image_tensor(
+    image_tensor: torch.Tensor, target_shape: tuple
+) -> torch.Tensor:
+    """
+    Resizes an image tensor to the target shape using torchvision transforms.
+
+    Args:
+        image_tensor (torch.Tensor): The input image tensor with shape (3, H, W).
+        target_shape (tuple): The target shape for the image (e.g., (3, 64, 64)).
+
+    Returns:
+        torch.Tensor: The resized image tensor.
+    """
+    resize = transforms.Resize((target_shape[1], target_shape[2]))
+    return resize(image_tensor.unsqueeze(0)).squeeze(0)

@@ -4,13 +4,9 @@ import os
 import unittest
 from urllib import request
 
-import torch
-import torchaudio
-
 from src.config.paths import TEST_DATA_DIR
 from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
-from src.data_preprocessing.feature_extraction.audio import extract_mfcc
-from src.data_preprocessing.preprocess import preprocess_audio
+from src.data_preprocessing.preprocessing import preprocess_audio
 
 
 class TestAudio(unittest.TestCase):

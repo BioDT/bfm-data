@@ -1,3 +1,5 @@
+slurm-*.out
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -179,3 +181,5 @@ src/config/era5_config
 # folder test data that contains all the files(images, sounds, etc) from sources for testingss
 test_data/audio
 test_data/Life
+
+airflow

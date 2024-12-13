@@ -91,3 +91,20 @@ For open source projects, say how it is licensed.
 
 ## Project status
 If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+
+
+## Useful commands
+
+Copy between hinton and snellius:
+
+ssh to hinton
+generate ssh key `ssh-keygen -t ed25519`
+copy your public key to https://portal.cua.surf.nl/user/keys `cat ~/.ssh/id_ed25519.pub`
+from hinton ssh to snellius to test: `ssh USERNAME@snellius.surf.nl then exit`
+
+```bash
+# one of these two, find which one is better / faster
+rsync -a --ignore-existing --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/prjs1134/data/projects/biodt/storage
+rsync -a --update --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/prjs1134/data/projects/biodt/storage
+```

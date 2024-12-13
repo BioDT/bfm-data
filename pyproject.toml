@@ -55,6 +55,7 @@ pygbif = "^0.6.4"
 country-bounding-boxes = "^0.2.3"
 country-converter = "^1.2"
 reverse-geocode = "^1.6.5"
+typer = "^0.13.1"
 
 [tool.poetry.scripts]
 run-app = "src.main:main"

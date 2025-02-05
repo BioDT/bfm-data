@@ -916,7 +916,7 @@ def create_batches(
             )
 
             if batch is not None:
-                return batch
+                batches.append(batch)
 
     elif load_type == "large-file":
         timestamps = merge_timestamps(surface_dataset, species_dataset)

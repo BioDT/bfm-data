@@ -16,6 +16,11 @@ python3 -m venv $venv_path
 
 source $venv_path/bin/activate
 
-pip install -U pip setuptools wheel
+## via pip
+# pip install -U pip setuptools wheel
+# pip install -e .
 
-pip install -e .
+# via poetry (more precise versions)
+pip install poetry
+# global poetry may be broken!!!
+$venv_path/bin/poetry install

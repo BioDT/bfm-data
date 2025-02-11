@@ -196,70 +196,41 @@ def create_batch(
 
         if has_climate_data:
             start_time = datetime.now()
-            for lat_idx, lat in enumerate(lat_range):
-                for lon_idx, lon in enumerate(lon_range):
-                    for var_name in ["t2m", "msl"]:
-                        # for var_name in ["t2m", "msl", "u10", "v10"]:
-                        var_value = (
-                            surface_variables_by_day[var_name]
-                            .sel(latitude=lat, longitude=lon, method="nearest")
-                            .values
-                        )
-                        # if not np.isnan(var_value) and var_value != 0.0:
-                        #     surfaces_variables[var_name] = add_sparse_value(
-                        #         surfaces_variables[var_name],
-                        #         [t, lat_idx, lon_idx],
-                        #         var_value.item(),
-                        #     )
-                        surfaces_variables[var_name][t, lat_idx, lon_idx] = (
-                            torch.tensor(
-                                var_value.item() if not np.isnan(var_value) else 0.0
-                            )
-                        )
+            for var_name in ["t2m", "msl"]:
+                # for var_name in ["t2m", "msl", "u10", "v10"]:
+                variable = surface_variables_by_day[var_name]
+                m = variable.to_numpy()
+                # print(m.shape) # (153, 321)
+                m_safe = np.nan_to_num(m, nan=0.0)
+                tensor = torch.tensor(m_safe)
+                surfaces_variables[var_name][t, :, :] = tensor
 
-                    for var_name in ["lsm"]:
-                        # for var_name in ["z", "lsm", "slt"]:
-                        var_value = (
-                            single_variables_by_day[var_name]
-                            .sel(latitude=lat, longitude=lon, method="nearest")
-                            .values
-                        )
-                        # if not np.isnan(var_value) and var_value != 0.0:
-                        #     single_variables[var_name] = add_sparse_value(
-                        #         single_variables[var_name],
-                        #         [t, lat_idx, lon_idx],
-                        #         var_value.item(),
-                        #     )
-                        single_variables[var_name][t, lat_idx, lon_idx] = torch.tensor(
-                            var_value.item() if not np.isnan(var_value) else 0.0
-                        )
+            for var_name in ["lsm"]:
+                # for var_name in ["z", "lsm", "slt"]:
+                variable = single_variables_by_day[var_name]
+                m = variable.to_numpy()
+                # print(m.shape) # (153, 321)
+                m_safe = np.nan_to_num(m, nan=0.0)
+                tensor = torch.tensor(m_safe)
+                single_variables[var_name][t, :, :] = tensor
 
-                    for var_name in ["z", "t"]:
-                        # for var_name in ["z", "t", "u", "v", "q"]:
-                        for p_idx, pressure_level in enumerate(pressure_levels):
-                            var_value = (
-                                atmospheric_variables_by_day[var_name]
-                                .sel(
-                                    latitude=lat,
-                                    longitude=lon,
-                                    pressure_level=pressure_level,
-                                    method="nearest",
-                                )
-                                .values
-                            )
+            for var_name in ["z", "t"]:
+                # for var_name in ["z", "t", "u", "v", "q"]:
+                variable = atmospheric_variables_by_day[var_name]
+                m = variable.to_numpy()  # shape: (13, 153, 321)
+                # only selecte wanted pressure levels (pressure_levels)
+                all_pressure_levels = (
+                    atmospheric_variables_by_day.pressure_level.to_numpy().tolist()
+                )
+                wanted_pressure_levels_indexes = [
+                    all_pressure_levels.index(p) for p in pressure_levels
+                ]
+                m = m[wanted_pressure_levels_indexes, :, :]
+                # print(m.shape)  # (3, 153, 321)
+                m_safe = np.nan_to_num(m, nan=0.0)
+                tensor = torch.tensor(m_safe)
+                atmospheric_variables[var_name][t, :, :, :] = tensor
 
-                            # if not np.isnan(var_value) and var_value != 0.0:
-                            #     atmospheric_variables[var_name] = add_sparse_value(
-                            #         atmospheric_variables[var_name],
-                            #         [t, p_idx, lat_idx, lon_idx],
-                            #         var_value.item(),
-                            #     )
-
-                            atmospheric_variables[var_name][
-                                t, p_idx, lat_idx, lon_idx
-                            ] = torch.tensor(
-                                var_value.item() if not np.isnan(var_value) else 0.0
-                            )
             end_time = datetime.now()
             print(
                 "TIME: climate_data_loops:",

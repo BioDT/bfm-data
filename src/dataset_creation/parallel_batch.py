@@ -8,7 +8,7 @@ import typer
 
 from src.config.paths import DATA_DIR, STORAGE_DIR
 from src.dataset_creation.create_dataset import (
-    create_batch_for_pair_of_days,
+    create_batches_for_pair_of_days,
     get_paths_for_files_pairs_of_days,
 )
 from src.dataset_creation.load_data import (
@@ -18,7 +18,7 @@ from src.dataset_creation.load_data import (
     load_world_bank_data,
 )
 
-app = typer.Typer()
+app = typer.Typer(pretty_exceptions_enable=False)
 
 # the file to save the potential pairs of days for batch
 list_file_path = "ERA5_days_pairs.json"
@@ -75,7 +75,7 @@ def run_single(index: int):
     forest_dataset = load_world_bank_data(forest_file)
     species_extinction_dataset = load_world_bank_data(species_extinction_file)
 
-    create_batch_for_pair_of_days(
+    count = create_batches_for_pair_of_days(
         atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,
         single_dataset_day1_path=single_dataset_day1_path,
         surface_dataset_day1_path=surface_dataset_day1_path,
@@ -88,6 +88,8 @@ def run_single(index: int):
         land_dataset=land_dataset,
         species_extinction_dataset=species_extinction_dataset,
     )
+    print(f"successfully created {count} batches")
+    print("FINISHED")
 
 
 if __name__ == "__main__":

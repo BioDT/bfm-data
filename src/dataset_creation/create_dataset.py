@@ -193,6 +193,7 @@ def create_batch(
             pressure_levels = None
 
         if has_climate_data:
+            start_time = datetime.now()
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):
                     for var_name in ["t2m", "msl"]:
@@ -257,7 +258,10 @@ def create_batch(
                             ] = torch.tensor(
                                 var_value.item() if not np.isnan(var_value) else 0.0
                             )
+            end_time = datetime.now()
+            print("TIME: climate_data_loops:", end_time - start_time)
         try:
+            start_time = datetime.now()
             species_dataset["Timestamp"] = pd.to_datetime(
                 species_dataset["Timestamp"], errors="coerce"
             )
@@ -268,6 +272,8 @@ def create_batch(
 
             has_species_data = True
             print("Filtered species_variables_by_day:", species_variables_by_day)
+            end_time = datetime.now()
+            print("TIME: filtered_species:", end_time - start_time)
         except KeyError:
             species_variables_by_day = None
             has_species_data = False
@@ -300,7 +306,7 @@ def create_batch(
         extra_species_limit = 1
 
         if has_species_data:
-
+            start_time = datetime.now()
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):
 
@@ -429,6 +435,8 @@ def create_batch(
                             print(
                                 f"IndexError for species_id {species_id} at (t={t}, lat_idx={lat_idx}, lon_idx={lon_idx}, species_idx={species_idx}): {e}"
                             )
+            end_time = datetime.now()
+            print("TIME: species_data_loops:", end_time - start_time)
 
         missing_initial_species = initial_species_ids - species_set
         for missing_species in missing_initial_species:
@@ -447,6 +455,7 @@ def create_batch(
         month_year = pd.Timestamp(current_date).strftime("%m/%Y")
         ndvi_column = f"NDVI_{month_year}"
 
+        start_time = datetime.now()
         for lat_idx, lat in enumerate(lat_range):
             for lon_idx, lon in enumerate(lon_range):
 
@@ -657,6 +666,8 @@ def create_batch(
                             extinction_value.values[0], dtype=torch.float16
                         )
 
+        end_time = datetime.now()
+        print("TIME: other_variables_loops:", end_time - start_time)
     first_timestamp = dates[0]
     second_timestamp = dates[1]
 
@@ -817,7 +828,10 @@ def create_and_save_batch(
     )
 
     os.makedirs(os.path.dirname(batch_file), exist_ok=True)
+    start_time = datetime.now()
     torch.save(batch, batch_file)
+    end_time = datetime.now()
+    print("TIME: write_batch:", end_time - start_time)
     return batch
 
 
@@ -831,7 +845,7 @@ def create_batches(
     agriculture_dataset: pd.DataFrame,
     forest_dataset: pd.DataFrame,
     load_type: str = "day-by-day",
-) -> list[DataBatch] | DataBatch:
+) -> int:
     """
     Create DataBatches by merging xarray-based ERA5 climate data with species data for each timestamp.
 
@@ -843,7 +857,7 @@ def create_batches(
         load_type (str): Load type can be 'day-by-day' or 'large-file'. Default is 'day-by-day'.
 
     Returns:
-        list[DataBatch]: A list of DataBatch objects containing both climate and species data.
+        int: The number of batches created.
     """
 
     species_dataset["Longitude"] = species_dataset["Longitude"].apply(
@@ -871,11 +885,12 @@ def create_batches(
     agriculture_variables = agriculture_tensors
     forest_variables = forest_tensors
 
-    batches = []
+    count = 0
 
     if load_type == "day-by-day":
         start_date = np.datetime64("2000-01-01T00:00:00", "s")
 
+        # all the timestamps (every 6 hours, for 2 files concatenated by caller = 8 timestamps)
         climate_timestamps = sorted(
             t
             for t in surface_dataset["valid_time"]
@@ -886,7 +901,11 @@ def create_batches(
 
         paired_timestamps = [
             (climate_timestamps[i], climate_timestamps[i + 1])
+            # --> [0,1], [2,3], [4,5]
             for i in range(0, len(climate_timestamps) - 1, 2)
+            # instead if we want all the transitions: [0,1], [1,2], [2,3] ...
+            # for i in range(len(climate_timestamps) - 1)
+            # TODO: need to avoid writing the same timestamp to multiple files, it's a waste of compute and space
         ]
 
         for timestamps in paired_timestamps:
@@ -916,7 +935,7 @@ def create_batches(
             )
 
             if batch is not None:
-                batches.append(batch)
+                count += 1
 
     elif load_type == "large-file":
         timestamps = merge_timestamps(surface_dataset, species_dataset)
@@ -947,8 +966,7 @@ def create_batches(
                 species_set=species_set,
             )
 
-            if batch is not None:
-                batches.append(batch)
+            count += 1
 
             reset_climate_tensors(
                 surfaces_variables, single_variables, atmospheric_variables
@@ -959,7 +977,7 @@ def create_batches(
             reset_tensors(agriculture_variables)
             reset_tensors(forest_variables)
 
-    return batches
+    return count
 
 
 def get_paths_for_files_pairs_of_days(era5_directory: str) -> List[Tuple[Dict, Dict]]:
@@ -998,7 +1016,7 @@ def get_paths_for_files_pairs_of_days(era5_directory: str) -> List[Tuple[Dict, D
     return all_values
 
 
-def create_batch_for_pair_of_days(
+def create_batches_for_pair_of_days(
     atmospheric_dataset_day1_path: str,
     single_dataset_day1_path: str,
     surface_dataset_day1_path: str,
@@ -1010,7 +1028,7 @@ def create_batch_for_pair_of_days(
     forest_dataset: pd.DataFrame,
     land_dataset: pd.DataFrame,
     species_extinction_dataset: pd.DataFrame,
-) -> DataBatch | None:
+) -> int:
     all_files = [
         atmospheric_dataset_day1_path,
         single_dataset_day1_path,
@@ -1036,6 +1054,7 @@ def create_batch_for_pair_of_days(
     single_dataset_day2 = xr.open_dataset(single_dataset_day2_path)
     surface_dataset_day2 = xr.open_dataset(surface_dataset_day2_path)
 
+    # here putting together the data for 2 days (2 different .nc files)
     atmospheric_dataset = xr.concat(
         [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
     )
@@ -1046,7 +1065,7 @@ def create_batch_for_pair_of_days(
         [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
     )
 
-    batch = create_batches(
+    count = create_batches(
         surface_dataset=surface_dataset,
         single_dataset=single_dataset,
         atmospheric_dataset=atmospheric_dataset,
@@ -1064,7 +1083,7 @@ def create_batch_for_pair_of_days(
     single_dataset_day2.close()
     surface_dataset_day2.close()
     
-    return batch
+    return count
 
 
 def create_dataset(
@@ -1078,7 +1097,7 @@ def create_dataset(
     land_file: str = None,
     forest_file: str = None,
     species_extinction_file: str = None,
-) -> list[DataBatch]:
+):
     """
     Create DataBatches from the multimodal and ERA5 datasets and save the resulting batches
     and batch metadata for future use.
@@ -1105,8 +1124,6 @@ def create_dataset(
     species_extinction_dataset = load_world_bank_data(species_extinction_file)
 
     if load_type == "day-by-day":
-        batches = []
-
         pair_of_days_paths = get_paths_for_files_pairs_of_days(era5_directory)
 
         for i, (day_1_path, day_2_paths) in enumerate(pair_of_days_paths):
@@ -1117,7 +1134,7 @@ def create_dataset(
             single_dataset_day2_path = day_2_paths["single"]
             surface_dataset_day2_path = day_2_paths["surface"]
 
-            batch = create_batch_for_pair_of_days(
+            count = create_batches_for_pair_of_days(
                 atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,
                 single_dataset_day1_path=single_dataset_day1_path,
                 surface_dataset_day1_path=surface_dataset_day1_path,
@@ -1130,9 +1147,8 @@ def create_dataset(
                 land_dataset=land_dataset,
                 species_extinction_dataset=species_extinction_dataset,
             )
+            print(f"successfully created {count} batches for pair of days")
 
-            if batch is not None:
-                batches.append(batch)
 
     elif load_type == "large-file":
 
@@ -1142,7 +1158,7 @@ def create_dataset(
             atmospheric_dataset,
         ) = load_era5_datasets(surface_file, single_file, atmospheric_file)
 
-        batches = create_batches(
+        count = create_batches(
             surface_dataset=surface_dataset,
             single_dataset=single_dataset,
             atmospheric_dataset=atmospheric_dataset,
@@ -1152,3 +1168,4 @@ def create_dataset(
             land_dataset=land_dataset,
             species_extinction_dataset=species_extinction_dataset,
         )
+        print(f"successfully created {count} batches for large-file")

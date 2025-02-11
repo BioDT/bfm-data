@@ -158,6 +158,7 @@ def create_batch(
     Returns:
         DataBatch: A DataBatch object containing both climate and species data for the given day.
     """
+    start_time_all_dates = datetime.now()
 
     locations, scales = get_mean_standard_deviation(
         surface_dataset, single_dataset, atmospheric_dataset
@@ -169,6 +170,7 @@ def create_batch(
     # )
 
     for t, current_date in enumerate(dates):
+        start_time_current_date = datetime.now()
         print(t)
         print(current_date)
 
@@ -259,7 +261,12 @@ def create_batch(
                                 var_value.item() if not np.isnan(var_value) else 0.0
                             )
             end_time = datetime.now()
-            print("TIME: climate_data_loops:", end_time - start_time)
+            print(
+                "TIME: climate_data_loops:",
+                end_time - start_time,
+                "(from start current timestep):",
+                end_time - start_time_current_date,
+            )
         try:
             start_time = datetime.now()
             species_dataset["Timestamp"] = pd.to_datetime(
@@ -273,7 +280,12 @@ def create_batch(
             has_species_data = True
             print("Filtered species_variables_by_day:", species_variables_by_day)
             end_time = datetime.now()
-            print("TIME: filtered_species:", end_time - start_time)
+            print(
+                "TIME: filtered_species:",
+                end_time - start_time,
+                "(from start current timestep):",
+                end_time - start_time_current_date,
+            )
         except KeyError:
             species_variables_by_day = None
             has_species_data = False
@@ -436,7 +448,12 @@ def create_batch(
                                 f"IndexError for species_id {species_id} at (t={t}, lat_idx={lat_idx}, lon_idx={lon_idx}, species_idx={species_idx}): {e}"
                             )
             end_time = datetime.now()
-            print("TIME: species_data_loops:", end_time - start_time)
+            print(
+                "TIME: species_data_loops:",
+                end_time - start_time,
+                "(from start current timestep):",
+                end_time - start_time_current_date,
+            )
 
         missing_initial_species = initial_species_ids - species_set
         for missing_species in missing_initial_species:
@@ -667,7 +684,12 @@ def create_batch(
                         )
 
         end_time = datetime.now()
-        print("TIME: other_variables_loops:", end_time - start_time)
+        print(
+            "TIME: other_variables_loops:",
+            end_time - start_time,
+            "(from start current timestep):",
+            end_time - start_time_current_date,
+        )
     first_timestamp = dates[0]
     second_timestamp = dates[1]
 
@@ -741,11 +763,11 @@ def initialize_data(crop_lat_n=None, crop_lon_n=None):
 
     lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range)
     T = 2
-    pressure_levels = 3
+    pressure_levels_len = 3
     num_species = 22
 
     climate_tensors = initialize_climate_tensors(
-        lat_range, lon_range, T, pressure_levels
+        lat_range, lon_range, T, pressure_levels_len
     )
     species_tensors = initialize_species_tensors(lat_range, lon_range, T, num_species)
     species_extinction_tensors = initialize_species_extinction_tensors(
@@ -804,6 +826,8 @@ def create_and_save_batch(
         print(f"Batch for {date1} to {date2} already exists. Skipping...")
         return None
 
+    start_time_all = datetime.now()
+
     batch = create_batch(
         dates=timestamps,
         lat_range=lat_range,
@@ -826,12 +850,19 @@ def create_and_save_batch(
         agriculture_variables=agriculture_variables,
         forest_variables=forest_variables,
     )
+    end_time = datetime.now()
+    print("TIME: create_batch (total):", end_time - start_time_all)
 
     os.makedirs(os.path.dirname(batch_file), exist_ok=True)
     start_time = datetime.now()
     torch.save(batch, batch_file)
     end_time = datetime.now()
-    print("TIME: write_batch:", end_time - start_time)
+    print(
+        "TIME: write_batch:",
+        end_time - start_time,
+        "(from start of batch creation):",
+        end_time - start_time_all,
+    )
     return batch
 
 
@@ -1082,7 +1113,7 @@ def create_batches_for_pair_of_days(
     atmospheric_dataset_day2.close()
     single_dataset_day2.close()
     surface_dataset_day2.close()
-    
+
     return count
 
 
@@ -1148,7 +1179,6 @@ def create_dataset(
                 species_extinction_dataset=species_extinction_dataset,
             )
             print(f"successfully created {count} batches for pair of days")
-
 
     elif load_type == "large-file":
 

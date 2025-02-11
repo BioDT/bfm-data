@@ -1,10 +1,24 @@
 # src/config/paths.py
-
+import os
+import platform
 from pathlib import Path
 
 HOME_DIR = Path.home()
-# STORAGE_DIR = Path("/data/projects/biodt/storage") # hinton
-STORAGE_DIR = Path("/projects/prjs1134/data/projects/biodt/storage") # snellius
+
+if platform.node() == "hinton":
+    PLATFORM = "hinton"
+elif os.path.isdir("/projects/prjs1134"):
+    PLATFORM = "snellius"
+else:
+    raise ValueError("Unknown storage location, cannote determine platform")
+
+if PLATFORM == "hinton":
+    STORAGE_DIR = Path("/data/projects/biodt/storage")  # hinton
+elif PLATFORM == "snellius":
+    STORAGE_DIR = Path("/projects/prjs1134/data/projects/biodt/storage")  # snellius
+else:
+    raise ValueError(f"Unknown platform {PLATFORM}")
+
 DATA_DIR = STORAGE_DIR / "data"
 
 LIFE_DIR = DATA_DIR / "Life"

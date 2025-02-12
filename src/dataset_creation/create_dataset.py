@@ -108,6 +108,40 @@ def add_sparse_value(tensor: torch.Tensor, index: list, value) -> torch.Tensor:
     return updated_tensor
 
 
+def check_latlon_ranges(
+    target_lat_range: np.ndarray,
+    target_lon_range: np.ndarray,
+    current_lat_range: np.ndarray,
+    current_lon_range: np.ndarray,
+):
+    # latitude check
+    assert (
+        target_lat_range.min() == current_lat_range.min()
+    ), f"min does not match: target_lat_range.min()={target_lat_range.min()} current_lat_range.min()={current_lat_range.min()}"
+    assert (
+        target_lat_range.max() == current_lat_range.max()
+    ), f"max does not match: target_lat_range.max()={target_lat_range.max()} current_lat_range.max()={current_lat_range.max()}"
+    assert (
+        target_lat_range.shape == current_lat_range.shape
+    ), f"shape does not match: target_lat_range.shape[0]={target_lat_range.shape[0]} current_lat_range.shape[0]={current_lat_range.shape[0]}"
+    assert (
+        target_lat_range[0] == current_lat_range[0]
+    ), f"first element does not match: target_lat_range[0]={target_lat_range[0]} current_lat_range[0]={current_lat_range[0]}"
+    # longitude check
+    assert (
+        target_lon_range.min() == current_lon_range.min()
+    ), f"min does not match: target_lon_range.min()={target_lon_range.min()} current_lon_range.min()={current_lon_range.min()}"
+    assert (
+        target_lon_range.max() == current_lon_range.max()
+    ), f"max does not match: target_lon_range.max()={target_lon_range.max()} current_lon_range.max()={current_lon_range.max()}"
+    assert (
+        target_lon_range.shape == current_lon_range.shape
+    ), f"shape does not match: target_lon_range.shape[0]={target_lon_range.shape[0]} current_lon_range.shape[0]={current_lon_range.shape[0]}"
+    assert (
+        target_lon_range[0] == current_lon_range[0]
+    ), f"first element does not match: target_lon_range[0]={target_lon_range[0]} current_lon_range[0]={current_lon_range[0]}"
+
+
 def create_batch(
     dates: list,
     lat_range: np.ndarray,
@@ -195,6 +229,29 @@ def create_batch(
             pressure_levels = None
 
         if has_climate_data:
+            assert surface_variables_by_day, "surface_variables_by_day is None"
+            assert single_variables_by_day, "single_variables_by_day is None"
+            assert atmospheric_variables_by_day, "atmospheric_variables_by_day is None"
+            check_latlon_ranges(
+                lat_range,
+                lon_range,
+                surface_variables_by_day.latitude.to_numpy(),
+                surface_variables_by_day.longitude.to_numpy(),
+            )
+
+            check_latlon_ranges(
+                lat_range,
+                lon_range,
+                single_variables_by_day.latitude.to_numpy(),
+                single_variables_by_day.longitude.to_numpy(),
+            )
+
+            check_latlon_ranges(
+                lat_range,
+                lon_range,
+                atmospheric_variables_by_day.latitude.to_numpy(),
+                atmospheric_variables_by_day.longitude.to_numpy(),
+            )
             start_time = datetime.now()
             for var_name in ["t2m", "msl"]:
                 # for var_name in ["t2m", "msl", "u10", "v10"]:
@@ -732,7 +789,9 @@ def initialize_data(crop_lat_n=None, crop_lon_n=None):
             lat_range, lon_range, crop_lat_n, crop_lon_n
         )
 
-    lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range)
+    # lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range) # Let's keep to [-180, 180]
+    # reverse lat_range to go from North to South
+    lat_range = lat_range[::-1]
     T = 2
     pressure_levels_len = 3
     num_species = 22

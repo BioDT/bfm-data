@@ -99,9 +99,9 @@ def run_land_merging():
     Runs the merging function with specified paths, variable names, and output path.
     """
 
-    land_file = "/data/projects/biodt/storage/data/Land/Europe_land_data.csv"
-    ndvi_file = "/data/projects/biodt/storage/data/Land/Europe_ndvi_monthly_data.csv"
+    land_file = paths.LAND_DIR / "Europe_land_data.csv"
+    ndvi_file = paths.LAND_DIR / "Europe_ndvi_monthly_data.csv"
 
-    output_path = paths.LAND_DIR / "Europe_combined_land_data.csv"
+    output_path = paths.LAND_COMBINED_FILE
 
-    merge_land_data(land_file, ndvi_file, output_path)
+    merge_land_data(str(land_file), str(ndvi_file), str(output_path))

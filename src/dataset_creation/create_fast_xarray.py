@@ -74,6 +74,11 @@ def convert_csv_to_netcdf(
     if type_file == "species":
         raise NotImplementedError("Species dataset not implemented yet")
         # TODO: how to get distributions of different species?
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+        for species_id in df["Species"].unique():
+            # species_id = 13833
+            species_df = df[df["Species"] == species_id]
+            column_name = f"Species_{species_id}"
 
     elif type_file == "agriculture":
         # The column "Variable" says what the values in the columns represent (names "Agri_{YEAR}")
@@ -167,14 +172,12 @@ if __name__ == "__main__":
     lat_range = lat_range.astype(float)
     lon_range = lon_range.astype(float)
 
-    files_to_convert = {
-        LAND_COMBINED_FILE: LAND_COMBINED_FILE_NC,
-        AGRICULTURE_COMBINED_FILE: AGRICULTURE_COMBINED_FILE_NC,
-        FOREST_FILE: FOREST_FILE_NC,
-        # SPECIES_DATASET: SPECIES_DATASET_NC,
-        SPECIES_EXTINCTION_FILE: SPECIES_EXTINCTION_FILE_NC,
-    }
     files_to_convert = [
+        # {
+        #     "input_file_path": SPECIES_DATASET,
+        #     "output_file_path": SPECIES_DATASET_NC,
+        #     "type_file": "species",
+        # }, # TODO: this is kept with batch creation slow script (16 secs)
         {
             "input_file_path": LAND_COMBINED_FILE,
             "output_file_path": LAND_COMBINED_FILE_NC,

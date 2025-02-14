@@ -179,7 +179,6 @@ def create_batch(
     single_variables: dict,
     atmospheric_variables: dict,
     species_variables: dict,
-    species_set: set,
     species_extinction_variables: dict,
     land_variables: dict,
     agriculture_variables: dict,
@@ -223,6 +222,51 @@ def create_batch(
     # pressure_levels = tuple(
     #     int(level) for level in atmospheric_dataset.pressure_level.values
     # )
+    # which species are most frequent in area? (not only today)
+    species_in_area_alltime = species_dataset[
+        (species_dataset["Latitude"] >= min(lat_range))
+        & (species_dataset["Latitude"] <= max(lat_range))
+        & (species_dataset["Longitude"] >= min(lon_range))
+        & (species_dataset["Longitude"] <= max(lon_range))
+    ]
+    counts = (
+        species_in_area_alltime.groupby(["Species"])["Species"]
+        .count()
+        .sort_values(ascending=False)
+    )
+    print("most frequent species (overall):", counts)
+    initial_species_ids = [
+        11824,
+        2082,
+        9783,
+        16067,
+        16348,
+        5997,
+        10261,
+        327,
+        13833,
+        9319,
+        18673,
+        16870,
+        10265,
+        15761,
+        9060,
+        10200,
+        2393,
+        511,
+        20832,
+        17663,
+        15861,
+    ]  # 21 species
+    max_species = 22
+    extra_species_limit = max_species - len(initial_species_ids)
+    assert (
+        extra_species_limit > 0
+    ), f"extra_species_limit must be positive: {max_species} - {len(initial_species_ids)}"
+    # take top species from counts
+    extra_species_ids = counts.index[:extra_species_limit].tolist()
+    final_species_ids = initial_species_ids + extra_species_ids
+    print("final_species_ids:", final_species_ids)
 
     for t, current_date in enumerate(dates):
         start_time_current_date = datetime.now()
@@ -327,7 +371,7 @@ def create_batch(
             ]
 
             has_species_data = True
-            print("Filtered species_variables_by_day:", species_variables_by_day)
+            # print("Filtered species_variables_by_day:", species_variables_by_day)
             end_time = datetime.now()
             print(
                 "TIME: filtered_species:",
@@ -339,32 +383,6 @@ def create_batch(
             species_variables_by_day = None
             has_species_data = False
             print("No species data found for the current date.")
-
-        initial_species_ids = {
-            11824,
-            2082,
-            9783,
-            16067,
-            16348,
-            5997,
-            10261,
-            327,
-            13833,
-            9319,
-            18673,
-            16870,
-            10265,
-            15761,
-            9060,
-            10200,
-            2393,
-            511,
-            20832,
-            17663,
-            15861,
-        }
-        max_species = 22
-        extra_species_limit = 1
 
         if has_species_data:
             start_time = datetime.now()
@@ -384,47 +402,60 @@ def create_batch(
             # ].apply(lambda x: x + 360 if x < 0 else x)
             print("transformed_species_data", len(transformed_species_data))
 
+            species_data_with_selected_species = transformed_species_data[
+                transformed_species_data["Species"].isin(final_species_ids)
+            ]
+
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):
-                    species_at_location = transformed_species_data[
-                        (transformed_species_data["Latitude"] == lat)
-                        & (transformed_species_data["Longitude"] == lon)
+                    species_at_location = species_data_with_selected_species[
+                        (species_data_with_selected_species["Latitude"] == lat)
+                        & (species_data_with_selected_species["Longitude"] == lon)
                     ]
 
                     for _, species_entry in species_at_location.iterrows():
 
                         species_id = int(species_entry["Species"])
 
-                        if species_id in initial_species_ids:
-                            if species_id not in species_set:
-                                species_set.add(species_id)
-                                print(
-                                    f"Added species_id {species_id} from initial_species_ids to species_set:",
-                                    species_set,
-                                )
-                        else:
-                            if (
-                                len(species_set - initial_species_ids)
-                                < extra_species_limit
-                            ):
-                                if len(species_set) < max_species:
-                                    species_set.add(species_id)
-                                    print(
-                                        f"Added extra species_id {species_id} to species_set:",
-                                        species_set,
-                                    )
-                                else:
-                                    print(
-                                        f"Skipping species_id {species_id}, max_species limit reached."
-                                    )
-                                    continue
-                            else:
-                                print(
-                                    f"Skipping species_id {species_id}, extra species limit reached."
-                                )
-                                continue
+                        # if species_id in initial_species_ids:
+                        #     if species_id not in species_set:
+                        #         species_set.add(species_id)
+                        #         print(
+                        #             f"Added species_id {species_id} from initial_species_ids to species_set:",
+                        #             species_set,
+                        #         )
+                        # else:
+                        #     if (
+                        #         len(species_set - initial_species_ids)
+                        #         < extra_species_limit
+                        #     ):
+                        #         if len(species_set) < max_species:
+                        #             species_set.add(species_id)
+                        #             print(
+                        #                 f"Added extra species_id {species_id} to species_set:",
+                        #                 species_set,
+                        #             )
+                        #         else:
+                        #             print(
+                        #                 f"Skipping species_id {species_id}, max_species limit reached."
+                        #             )
+                        #             continue
+                        #     else:
+                        #         print(
+                        #             f"Skipping species_id {species_id}, extra species limit reached."
+                        #         )
+                        #         continue
 
-                        species_idx = list(species_set).index(species_id) + 1
+                        species_idx = final_species_ids.index(species_id)
+                        print(
+                            "species",
+                            species_id,
+                            "found at",
+                            lat,
+                            lon,
+                            "with distribution",
+                            species_entry["Distribution"],
+                        )
 
                         try:
 
@@ -507,6 +538,13 @@ def create_batch(
                                 f"IndexError for species_id {species_id} at (t={t}, lat_idx={lat_idx}, lon_idx={lon_idx}, species_idx={species_idx}): {e}"
                             )
             end_time = datetime.now()
+            # debug distribution
+            tensor = species_variables["dynamic"]["Distribution"][t, :, :, :]
+            nan_values = torch.isnan(tensor.view(-1)).sum().item()
+            tot_values = tensor.numel()
+            print(
+                f"Distribution tot: {tot_values} NaN: {nan_values} percent: {nan_values/tot_values:.5%}"
+            )
             print(
                 "TIME: species_data_loops:",
                 end_time - start_time,
@@ -514,18 +552,18 @@ def create_batch(
                 end_time - start_time_current_date,
             )
 
-        missing_initial_species = initial_species_ids - species_set
-        for missing_species in missing_initial_species:
-            if len(species_set) < max_species:
-                species_set.add(missing_species)
-                print(
-                    f"Added missing initial species_id {missing_species} to species_set:",
-                    species_set,
-                )
-            else:
-                print(
-                    f"Skipping missing initial species_id {missing_species}, max_species limit reached."
-                )
+        # missing_initial_species = initial_species_ids - species_set
+        # for missing_species in missing_initial_species:
+        #     if len(species_set) < max_species:
+        #         species_set.add(missing_species)
+        #         print(
+        #             f"Added missing initial species_id {missing_species} to species_set:",
+        #             species_set,
+        #         )
+        #     else:
+        #         print(
+        #             f"Skipping missing initial species_id {missing_species}, max_species limit reached."
+        #         )
 
         year = pd.Timestamp(current_date).year
         month_year = pd.Timestamp(current_date).strftime("%m/%Y")
@@ -837,7 +875,7 @@ def create_batch(
             "longitudes": torch.tensor(lon_range).tolist(),
             "timestamp": [ts.isoformat() for ts in (first_timestamp, second_timestamp)],
             "pressure_levels": list(pressure_levels),
-            "species_list": list(species_set),
+            "species_list": final_species_ids,
         },
     }
 
@@ -945,7 +983,6 @@ def create_and_save_batch(
     land_dataset,
     agriculture_dataset,
     forest_dataset,
-    species_set,
 ):
     """Create a batch and save it to disk."""
 
@@ -979,7 +1016,6 @@ def create_and_save_batch(
         single_variables=single_variables,
         atmospheric_variables=atmospheric_variables,
         species_variables=species_variables,
-        species_set=species_set,
         species_extinction_variables=species_extinction_variables,
         land_variables=land_variables,
         agriculture_variables=agriculture_variables,
@@ -1030,8 +1066,6 @@ def create_batches(
     # species_dataset["Longitude"] = species_dataset["Longitude"].apply(
     #     lambda lon: (lon + 360) % 360 if lon < 0 else lon
     # )
-
-    species_set = set()
 
     (
         lat_range,
@@ -1098,7 +1132,6 @@ def create_batches(
                 land_dataset=land_dataset,
                 agriculture_dataset=agriculture_dataset,
                 forest_dataset=forest_dataset,
-                species_set=species_set,
             )
 
             if batch is not None:
@@ -1130,7 +1163,6 @@ def create_batches(
                 land_dataset=land_dataset,
                 agriculture_dataset=agriculture_dataset,
                 forest_dataset=forest_dataset,
-                species_set=species_set,
             )
 
             count += 1

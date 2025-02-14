@@ -184,7 +184,7 @@ def create_batch(
     land_variables: dict,
     agriculture_variables: dict,
     forest_variables: dict,
-) -> DataBatch:
+) -> dict:
     """
     Create a DataBatch for a specific day by merging climate and species data but by giving two timestamps
     for prediction purposes.
@@ -247,7 +247,9 @@ def create_batch(
         except KeyError:
             surface_variables_by_day = None
             has_climate_data = False
-            pressure_levels = None
+            pressure_levels = []
+            single_variables_by_day = None
+            atmospheric_variables_by_day = None
 
         if has_climate_data:
             assert surface_variables_by_day, "surface_variables_by_day is None"
@@ -1128,7 +1130,7 @@ def create_batches_for_pair_of_days(
         print(
             f"Skipping date due to missing or invalid files: {non_valid_files}.",
         )
-        return
+        return 0
 
     atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1_path)
     single_dataset_day1 = xr.open_dataset(single_dataset_day1_path)

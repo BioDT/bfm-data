@@ -522,6 +522,77 @@ def create_batch(
         ndvi_column = f"NDVI_{month_year}"
 
         start_time = datetime.now()
+
+        land_dataset_new = xr.open_dataset(str(paths.LAND_COMBINED_FILE_NC))
+        # agriculture_dataset_new = xr.open_dataset(str(paths.AGRICULTURE_COMBINED_FILE_NC))
+        forest_dataset_new = xr.open_dataset(paths.FOREST_FILE_NC)
+        species_extinction_dataset_new = xr.open_dataset(
+            paths.SPECIES_EXTINCTION_FILE_NC
+        )
+        new_ndvi_column = ndvi_column.replace("/", "_")
+        new_land_column = f"Land_{year}"
+
+        # NDVI and Land from the land dataset
+        check_latlon_ranges(
+            lat_range,
+            lon_range,
+            land_dataset_new.latitude.to_numpy(),
+            land_dataset_new.longitude.to_numpy(),
+        )
+
+        variable = land_dataset_new[new_ndvi_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        land_variables["NDVI"][t, :, :] = tensor
+
+        variable = land_dataset_new[new_land_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        land_variables["Land"][t, :, :] = tensor
+
+        # # AGRICULTURE (TODO: broken!!!)
+        # agriculture_fields_mapping = {
+        #     f"Agriculture_{year}": "AgricultureLand",
+        #     f"Agriculture_Irrigated_{year}": "AgricultureIrrLand",
+        #     f"Arable_{year}": "ArableLand",
+        #     f"Cropland_{year}": "Cropland",
+        # }
+        # check_latlon_ranges(
+        #     lat_range,
+        #     lon_range,
+        #     agriculture_dataset_new.latitude.to_numpy(),
+        #     agriculture_dataset_new.longitude.to_numpy(),
+        # )
+
+        # for original_field, new_field in agriculture_fields_mapping.items():
+        #     variable = agriculture_dataset_new[original_field]
+        #     m = variable.to_numpy()
+        #     # print(m.shape) # (153, 321)
+        #     m_safe = np.nan_to_num(m, nan=0.0)
+        #     tensor = torch.tensor(m_safe)
+        #     agriculture_variables[new_field][t, :, :] = tensor
+
+        # FOREST
+        check_latlon_ranges(
+            lat_range,
+            lon_range,
+            forest_dataset_new.latitude.to_numpy(),
+            forest_dataset_new.longitude.to_numpy(),
+        )
+        variable = forest_dataset_new[f"Forest_{year}"]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        forest_variables["Forest"][t, :, :] = tensor
+
+        # EXTINCTION
+        check_latlon_ranges(
+            lat_range,
+            lon_range,
+            species_extinction_dataset_new.latitude.to_numpy(),
+            species_extinction_dataset_new.longitude.to_numpy(),
+        )
+
+        variable = species_extinction_dataset_new[f"RLI_{year}"]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        species_extinction_variables["ExtinctionValue"][t, :, :] = tensor
+
         for lat_idx, lat in enumerate(lat_range):
             for lon_idx, lon in enumerate(lon_range):
 
@@ -642,31 +713,31 @@ def create_batch(
                 #             forest_variables["Forest"], [t, lat_idx, lon_idx], var_value.values[0]
                 #         )
 
-                ndvi_at_location = land_dataset[
-                    (land_dataset["Latitude"] == lat)
-                    & (land_dataset["Longitude"] == lon)
-                ]
+                # ndvi_at_location = land_dataset[
+                #     (land_dataset["Latitude"] == lat)
+                #     & (land_dataset["Longitude"] == lon)
+                # ]
 
-                if (
-                    not ndvi_at_location.empty
-                    and ndvi_column in ndvi_at_location.columns
-                ):
-                    ndvi_value = ndvi_at_location.get(ndvi_column, pd.NA)
-                    if ndvi_value is not pd.NA:
-                        land_variables["NDVI"][t, lat_idx, lon_idx] = torch.tensor(
-                            ndvi_value.values[0], dtype=torch.float16
-                        )
+                # if (
+                #     not ndvi_at_location.empty
+                #     and ndvi_column in ndvi_at_location.columns
+                # ):
+                #     ndvi_value = ndvi_at_location.get(ndvi_column, pd.NA)
+                #     if ndvi_value is not pd.NA:
+                #         land_variables["NDVI"][t, lat_idx, lon_idx] = torch.tensor(
+                #             ndvi_value.values[0], dtype=torch.float16
+                #         )
 
-                land_at_location = land_dataset[
-                    (land_dataset["Latitude"] == lat)
-                    & (land_dataset["Longitude"] == lon)
-                ]
-                if not land_at_location.empty and str(year) in land_at_location.columns:
-                    land_value = land_at_location.get(str(year), pd.NA)
-                    if land_value is not pd.NA:
-                        land_variables["Land"][t, lat_idx, lon_idx] = torch.tensor(
-                            land_value.values[0], dtype=torch.float16
-                        )
+                # land_at_location = land_dataset[
+                #     (land_dataset["Latitude"] == lat)
+                #     & (land_dataset["Longitude"] == lon)
+                # ]
+                # if not land_at_location.empty and str(year) in land_at_location.columns:
+                #     land_value = land_at_location.get(str(year), pd.NA)
+                #     if land_value is not pd.NA:
+                #         land_variables["Land"][t, lat_idx, lon_idx] = torch.tensor(
+                #             land_value.values[0], dtype=torch.float16
+                #         )
 
                 agriculture_at_location = agriculture_dataset[
                     (agriculture_dataset["Latitude"] == lat)
@@ -696,17 +767,17 @@ def create_batch(
                                         agri_value.values[0], dtype=torch.float16
                                     )
 
-                forest_at_location = forest_dataset[
-                    (forest_dataset["Latitude"] == lat)
-                    & (forest_dataset["Longitude"] == lon)
-                ]
+                # forest_at_location = forest_dataset[
+                #     (forest_dataset["Latitude"] == lat)
+                #     & (forest_dataset["Longitude"] == lon)
+                # ]
 
-                if not forest_at_location.empty:
-                    forest_value = forest_at_location.get(f"Forest_{year}", pd.NA)
-                    if forest_value is not pd.NA:
-                        forest_variables["Forest"][t, lat_idx, lon_idx] = torch.tensor(
-                            forest_value.values[0], dtype=torch.float16
-                        )
+                # if not forest_at_location.empty:
+                #     forest_value = forest_at_location.get(f"Forest_{year}", pd.NA)
+                #     if forest_value is not pd.NA:
+                #         forest_variables["Forest"][t, lat_idx, lon_idx] = torch.tensor(
+                #             forest_value.values[0], dtype=torch.float16
+                #         )
 
                 # extinction_at_location = species_extinction_dataset[
                 #     (species_extinction_dataset["Latitude"] == lat)
@@ -719,18 +790,18 @@ def create_batch(
                 #             species_extinction_variables["ExtinctionValue"], [t, lat_idx, lon_idx], var_value.values[0]
                 #         )
 
-                extinction_at_location = species_extinction_dataset[
-                    (species_extinction_dataset["Latitude"] == lat)
-                    & (species_extinction_dataset["Longitude"] == lon)
-                ]
-                if not extinction_at_location.empty:
-                    extinction_value = extinction_at_location.get(f"RLI_{year}", pd.NA)
-                    if extinction_value is not pd.NA:
-                        species_extinction_variables["ExtinctionValue"][
-                            t, lat_idx, lon_idx
-                        ] = torch.tensor(
-                            extinction_value.values[0], dtype=torch.float16
-                        )
+                # extinction_at_location = species_extinction_dataset[
+                #     (species_extinction_dataset["Latitude"] == lat)
+                #     & (species_extinction_dataset["Longitude"] == lon)
+                # ]
+                # if not extinction_at_location.empty:
+                #     extinction_value = extinction_at_location.get(f"RLI_{year}", pd.NA)
+                #     if extinction_value is not pd.NA:
+                #         species_extinction_variables["ExtinctionValue"][
+                #             t, lat_idx, lon_idx
+                #         ] = torch.tensor(
+                #             extinction_value.values[0], dtype=torch.float16
+                #         )
 
         end_time = datetime.now()
         print(

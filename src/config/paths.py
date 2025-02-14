@@ -91,14 +91,22 @@ PERMANENT_CROPLAND_FILE = (
 LAND_FILE = STORAGE_DIR / "dataset_files" / "World_Bank" / "land_area_1961_2021.csv"
 
 SPECIES_DATASET = STORAGE_DIR / "processed_data" / "species_dataset.parquet"
+SPECIES_DATASET_NC = STORAGE_DIR / "processed_data" / "species_dataset.nc"
 
 AGRICULTURE_COMBINED_FILE = (
     DATA_DIR / "Agriculture" / "Europe_combined_agriculture_data.csv"
 )
+AGRICULTURE_COMBINED_FILE_NC = (
+    DATA_DIR / "Agriculture" / "Europe_combined_agriculture_data.nc"
+)
 
 SPECIES_EXTINCTION_FILE = DATA_DIR / "RedList" / "Europe_red_list_index.csv"
+SPECIES_EXTINCTION_FILE_NC = DATA_DIR / "RedList" / "Europe_red_list_index.nc"
 
 FOREST_FILE = DATA_DIR / "Forest" / "Europe_forest_data.csv"
+FOREST_FILE_NC = DATA_DIR / "Forest" / "Europe_forest_data.nc"
+
 LAND_COMBINED_FILE = DATA_DIR / "Land" / "Europe_combined_land_data.csv"
+LAND_COMBINED_FILE_NC = DATA_DIR / "Land" / "Europe_combined_land_data.nc"
 
 MAPPING_FILE = STORAGE_DIR / "processed_data" / "labels_mapping" / "label_mappings.json"

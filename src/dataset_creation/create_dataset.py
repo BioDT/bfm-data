@@ -142,6 +142,27 @@ def check_latlon_ranges(
     ), f"first element does not match: target_lon_range[0]={target_lon_range[0]} current_lon_range[0]={current_lon_range[0]}"
 
 
+def get_tensor_from_xarray_dataarray(
+    dataarray: xr.DataArray, replace_nan_value: float | None = None
+) -> torch.Tensor:
+    """
+    Convert an xarray DataArray to a PyTorch tensor.
+
+    Args:
+        dataarray (xr.DataArray): xarray DataArray to convert.
+        replace_nan_value (float | None): Value to fill NaN values with. If None or False, NaN values are not replaced.
+
+    Returns:
+        torch.Tensor: PyTorch tensor with the same data as the input DataArray.
+    """
+    tensor = torch.tensor(dataarray.to_numpy())
+    m = dataarray.to_numpy()
+    if replace_nan_value is not None and replace_nan_value is not False:
+        m = np.nan_to_num(m, nan=replace_nan_value)
+    tensor = torch.tensor(m)
+    return tensor
+
+
 def create_batch(
     dates: list,
     lat_range: np.ndarray,
@@ -256,25 +277,19 @@ def create_batch(
             for var_name in ["t2m", "msl"]:
                 # for var_name in ["t2m", "msl", "u10", "v10"]:
                 variable = surface_variables_by_day[var_name]
-                m = variable.to_numpy()
-                # print(m.shape) # (153, 321)
-                m_safe = np.nan_to_num(m, nan=0.0)
-                tensor = torch.tensor(m_safe)
+                tensor = get_tensor_from_xarray_dataarray(variable)
                 surfaces_variables[var_name][t, :, :] = tensor
 
             for var_name in ["lsm"]:
                 # for var_name in ["z", "lsm", "slt"]:
                 variable = single_variables_by_day[var_name]
-                m = variable.to_numpy()
-                # print(m.shape) # (153, 321)
-                m_safe = np.nan_to_num(m, nan=0.0)
-                tensor = torch.tensor(m_safe)
+                tensor = get_tensor_from_xarray_dataarray(variable)
                 single_variables[var_name][t, :, :] = tensor
 
             for var_name in ["z", "t"]:
                 # for var_name in ["z", "t", "u", "v", "q"]:
                 variable = atmospheric_variables_by_day[var_name]
-                m = variable.to_numpy()  # shape: (13, 153, 321)
+                # m = variable.to_numpy()  # shape: (13, 153, 321)
                 # only selecte wanted pressure levels (pressure_levels)
                 all_pressure_levels = (
                     atmospheric_variables_by_day.pressure_level.to_numpy().tolist()
@@ -282,10 +297,14 @@ def create_batch(
                 wanted_pressure_levels_indexes = [
                     all_pressure_levels.index(p) for p in pressure_levels
                 ]
-                m = m[wanted_pressure_levels_indexes, :, :]
-                # print(m.shape)  # (3, 153, 321)
-                m_safe = np.nan_to_num(m, nan=0.0)
-                tensor = torch.tensor(m_safe)
+                # m = m[wanted_pressure_levels_indexes, :, :]
+                # # print(m.shape)  # (3, 153, 321)
+                # m_safe = np.nan_to_num(m, nan=0.0)
+                # tensor = torch.tensor(m_safe)
+                tensor = get_tensor_from_xarray_dataarray(variable)
+                # only get the wanted pressure levels
+                tensor = tensor[wanted_pressure_levels_indexes, :, :]
+                # print(tensor.shape)  # (3, 153, 321)
                 atmospheric_variables[var_name][t, :, :, :] = tensor
 
             end_time = datetime.now()
@@ -347,14 +366,14 @@ def create_batch(
 
         if has_species_data:
             start_time = datetime.now()
+            transformed_species_data = species_variables_by_day.copy()
+            # no need, now we are in [-180,+180] range with longitudes
+            # transformed_species_data["Longitude"] = transformed_species_data[
+            #     "Longitude"
+            # ].apply(lambda x: x + 360 if x < 0 else x)
+
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):
-
-                    transformed_species_data = species_variables_by_day.copy()
-                    transformed_species_data["Longitude"] = transformed_species_data[
-                        "Longitude"
-                    ].apply(lambda x: x + 360 if x < 0 else x)
-
                     species_at_location = transformed_species_data[
                         (transformed_species_data["Latitude"] == lat)
                         & (transformed_species_data["Longitude"] == lon)
@@ -792,6 +811,9 @@ def initialize_data(crop_lat_n=None, crop_lon_n=None):
     # lat_range, lon_range = rescale_sort_lat_lon(lat_range, lon_range) # Let's keep to [-180, 180]
     # reverse lat_range to go from North to South
     lat_range = lat_range[::-1]
+    lat_range = lat_range.astype(float)
+    lon_range = lon_range.astype(float)
+
     T = 2
     pressure_levels_len = 3
     num_species = 22
@@ -921,9 +943,10 @@ def create_batches(
         int: The number of batches created.
     """
 
-    species_dataset["Longitude"] = species_dataset["Longitude"].apply(
-        lambda lon: (lon + 360) % 360 if lon < 0 else lon
-    )
+    # we are in [-180, +180] range with longitudes
+    # species_dataset["Longitude"] = species_dataset["Longitude"].apply(
+    #     lambda lon: (lon + 360) % 360 if lon < 0 else lon
+    # )
 
     species_set = set()
 

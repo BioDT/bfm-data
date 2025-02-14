@@ -45,6 +45,8 @@ def load_world_bank_data(filepath: str) -> pd.DataFrame:
     and return it as a DataFrame.
     """
     data = pd.read_csv(filepath, low_memory=False)
+    # uniform all the longitudes to be in the range of -180 to 180
+    data["Longitude"] = data["Longitude"].apply(lambda x: x - 360.0 if x > 180.0 else x)
     return data
 
 
@@ -128,31 +130,37 @@ def load_species_data(species_file: str) -> pd.DataFrame:
     species_dataset = pd.read_parquet(species_file)
 
     species_dataset["Image"] = species_dataset["Image"].apply(
-        lambda x: resize_to_target(
-            deserialize_array(x, [(3, 64, 64), (3, 128, 128)]), (3, 64, 64)
+        lambda x: (
+            resize_to_target(
+                deserialize_array(x, [(3, 64, 64), (3, 128, 128)]), (3, 64, 64)
+            )
+            if isinstance(x, str)
+            else x
         )
-        if isinstance(x, str)
-        else x
     )
 
     species_dataset["Audio"] = species_dataset["Audio"].apply(
-        lambda x: resize_to_target(deserialize_array(x, [(1, 13, 1)]), (1, 13, 1))
-        if isinstance(x, str)
-        else x
+        lambda x: (
+            resize_to_target(deserialize_array(x, [(1, 13, 1)]), (1, 13, 1))
+            if isinstance(x, str)
+            else x
+        )
     )
 
     species_dataset["Description"] = species_dataset["Description"].apply(
-        lambda x: resize_to_target(
-            deserialize_array(x, [(64, 64), (128,)]), (1, 64, 64)
+        lambda x: (
+            resize_to_target(deserialize_array(x, [(64, 64), (128,)]), (1, 64, 64))
+            if isinstance(x, str)
+            else x
         )
-        if isinstance(x, str)
-        else x
     )
 
     species_dataset["eDNA"] = species_dataset["eDNA"].apply(
-        lambda x: resize_to_target(deserialize_array(x, [(256,)]), (256,))
-        if isinstance(x, str)
-        else x
+        lambda x: (
+            resize_to_target(deserialize_array(x, [(256,)]), (256,))
+            if isinstance(x, str)
+            else x
+        )
     )
 
     species_dataset["Timestamp"] = species_dataset["Timestamp"].apply(extract_timestamp)

@@ -12,7 +12,7 @@ def visit_obj(obj, prefix: List[str] = []):
     if isinstance(obj, torch.Tensor):
         nan_values = torch.isnan(obj.view(-1)).sum().item()
         tot_values = obj.numel()
-        print(format_prefix(prefix), obj.shape, f"NaN {nan_values/tot_values:.2%}%")
+        print(format_prefix(prefix), obj.shape, f"NaN {nan_values/tot_values:.5%}")
     elif isinstance(obj, dict):
         for k, v in obj.items():
             visit_obj(v, prefix + [k])

@@ -314,7 +314,7 @@ def initialize_climate_tensors(
     T: int,
     pressure_levels: int = 13,
     placeholder_value: float = float("nan"),
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Dict[str, torch.Tensor]]:
     """
     Create tensors for surface, atmospheric, and single variables based on the dataset's variables, initialized with a placeholder value (NaN by default).
 

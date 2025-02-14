@@ -5,15 +5,9 @@
 import json
 
 import typer
+import xarray as xr
 
-from src.config.paths import (
-    AGRICULTURE_COMBINED_FILE,
-    ERA5_DIR,
-    FOREST_FILE,
-    LAND_COMBINED_FILE,
-    SPECIES_DATASET,
-    SPECIES_EXTINCTION_FILE,
-)
+from src.config.paths import *
 from src.dataset_creation.create_dataset import (
     create_batches_for_pair_of_days,
     get_paths_for_files_pairs_of_days,
@@ -34,9 +28,9 @@ era5_directory = ERA5_DIR
 
 species_file = SPECIES_DATASET
 agriculture_file = AGRICULTURE_COMBINED_FILE
-land_file = LAND_COMBINED_FILE
-forest_file = FOREST_FILE
-species_extinction_file = SPECIES_EXTINCTION_FILE
+land_file = LAND_COMBINED_FILE_NC
+forest_file = FOREST_FILE_NC
+species_extinction_file = SPECIES_EXTINCTION_FILE_NC
 
 
 @app.command()
@@ -78,9 +72,9 @@ def run_single(index: int):
 
     species_dataset = load_species_data(str(species_file))
     agriculture_dataset = load_world_bank_data(str(agriculture_file))
-    land_dataset = load_world_bank_data(str(land_file))
-    forest_dataset = load_world_bank_data(str(forest_file))
-    species_extinction_dataset = load_world_bank_data(str(species_extinction_file))
+    land_dataset = xr.open_dataset(str(land_file))
+    forest_dataset = xr.open_dataset(forest_file)
+    species_extinction_dataset = xr.open_dataset(species_extinction_file)
 
     count = create_batches_for_pair_of_days(
         atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,

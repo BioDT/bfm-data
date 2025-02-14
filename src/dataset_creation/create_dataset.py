@@ -368,11 +368,21 @@ def create_batch(
 
         if has_species_data:
             start_time = datetime.now()
-            transformed_species_data = species_variables_by_day.copy()
+            assert (
+                species_variables_by_day is not None
+            ), "species_variables_by_day is None"
+            # transformed_species_data = species_variables_by_day.copy()
+            transformed_species_data = species_variables_by_day[
+                (species_dataset["Latitude"] >= min(lat_range))
+                & (species_dataset["Latitude"] <= max(lat_range))
+                & (species_dataset["Longitude"] >= min(lon_range))
+                & (species_dataset["Longitude"] <= max(lon_range))
+            ].copy()
             # no need, now we are in [-180,+180] range with longitudes
             # transformed_species_data["Longitude"] = transformed_species_data[
             #     "Longitude"
             # ].apply(lambda x: x + 360 if x < 0 else x)
+            print("transformed_species_data", len(transformed_species_data))
 
             for lat_idx, lat in enumerate(lat_range):
                 for lon_idx, lon in enumerate(lon_range):

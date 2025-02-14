@@ -12,8 +12,8 @@ from src.dataset_creation.load_data import load_species_data, load_world_bank_da
 def get_latlon_matrix_for_columns(
     df: pd.DataFrame,
     column_names: List[str],
-    lat_range: np.ndarray,
-    lon_range: np.ndarray,
+    lat_range: np.ndarray | List[float],
+    lon_range: np.ndarray | List[float],
     default_value=np.nan,
 ) -> Dict[str, np.ndarray]:
     results = {
@@ -50,8 +50,8 @@ def get_latlon_matrix_for_columns(
 def convert_csv_to_netcdf(
     input_file_path: str,
     output_file_path: str,
-    lat_range: np.ndarray,
-    lon_range: np.ndarray,
+    lat_range: np.ndarray | List[float],
+    lon_range: np.ndarray | List[float],
     type_file: str,
 ):
     # generic columns
@@ -149,6 +149,10 @@ def convert_csv_to_netcdf(
     #     ds["NDVI_12_2017"].sel(latitude=39.75, longitude=19.75, method="nearest").values
     # )  # 0.54
 
+    # remove file if exists
+    if os.path.exists(output_file_path):
+        os.remove(output_file_path)
+
     # write to file
     ds.to_netcdf(output_file_path)
     # xr.open_dataset(output_file_path)
@@ -160,10 +164,8 @@ if __name__ == "__main__":
     lat_range = np.arange(min_lat, max_lat + 0.25, 0.25)
     lon_range = np.arange(min_lon, max_lon + 0.25, 0.25)
     lat_range = lat_range[::-1]
-
-    import torch
-
-    v = torch.tensor(lat_range).tolist()
+    lat_range = lat_range.astype(float)
+    lon_range = lon_range.astype(float)
 
     files_to_convert = {
         LAND_COMBINED_FILE: LAND_COMBINED_FILE_NC,

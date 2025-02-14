@@ -444,21 +444,21 @@ def create_batch(
                             # species_entry["Image"], dtype=torch.float32
                             # )
 
-                            species_variables["dynamic"]["Description"][
-                                t, lat_idx, lon_idx, species_idx
-                            ] = safe_tensor_conversion(
-                                species_entry["Description"], dtype=torch.float32
-                            )
+                            # species_variables["dynamic"]["Description"][
+                            #     t, lat_idx, lon_idx, species_idx
+                            # ] = safe_tensor_conversion(
+                            #     species_entry["Description"], dtype=torch.float32
+                            # )
 
                             # species_variables["dynamic"]["Audio"][t, lat_idx, lon_idx, species_idx] = safe_tensor_conversion(
                             #     species_entry["Audio"], dtype=torch.float32
                             # )
 
-                            species_variables["dynamic"]["eDNA"][
-                                t, lat_idx, lon_idx, species_idx
-                            ] = safe_tensor_conversion(
-                                species_entry["eDNA"], dtype=torch.float32
-                            )
+                            # species_variables["dynamic"]["eDNA"][
+                            #     t, lat_idx, lon_idx, species_idx
+                            # ] = safe_tensor_conversion(
+                            #     species_entry["eDNA"], dtype=torch.float32
+                            # )
 
                             species_variables["dynamic"]["Distribution"][
                                 t, lat_idx, lon_idx, species_idx

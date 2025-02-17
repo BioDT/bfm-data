@@ -1108,6 +1108,7 @@ def create_batches(
     land_dataset: xr.Dataset,
     agriculture_dataset: pd.DataFrame,
     forest_dataset: xr.Dataset,
+    dry_run: bool = False,
 ) -> int:
     """
     Create DataBatches by merging xarray-based ERA5 climate data with species data for each timestamp.
@@ -1122,8 +1123,6 @@ def create_batches(
         int: The number of batches created.
     """
 
-    count = 0
-
     start_date = np.datetime64("2000-01-01T00:00:00", "s")
 
     # all the timestamps (every 6 hours, for 2 files concatenated by caller = 8 timestamps)
@@ -1133,7 +1132,7 @@ def create_batches(
         if t >= start_date
     )
     # 4 from the first day, 1 from the next day
-    climate_timestamps = climate_timestamps[:5]
+    climate_timestamps = climate_timestamps
 
     lat_range, lon_range = get_lat_lon_ranges()
     final_species_ids = get_final_species(
@@ -1147,24 +1146,26 @@ def create_batches(
     for timestamp in tqdm(climate_timestamps, desc="Generating snapshots"):
         print(f"Processing timestamp: {timestamp}")
 
-        snapshot = create_snapshot_for_timestamp(
-            single_date_timestamp=timestamp,
-            lat_range=lat_range,
-            lon_range=lon_range,
-            surface_dataset=surface_dataset,
-            single_dataset=single_dataset,
-            atmospheric_dataset=atmospheric_dataset,
-            species_dataset=species_dataset,
-            agriculture_dataset=agriculture_dataset,
-            land_dataset=land_dataset,
-            forest_dataset=forest_dataset,
-            species_extinction_dataset=species_extinction_dataset,
-            final_species_ids=final_species_ids,
-            pressure_levels=pressure_levels,
-        )
+        if dry_run:
+            snapshot = None
+        else:
+            snapshot = create_snapshot_for_timestamp(
+                single_date_timestamp=timestamp,
+                lat_range=lat_range,
+                lon_range=lon_range,
+                surface_dataset=surface_dataset,
+                single_dataset=single_dataset,
+                atmospheric_dataset=atmospheric_dataset,
+                species_dataset=species_dataset,
+                agriculture_dataset=agriculture_dataset,
+                land_dataset=land_dataset,
+                forest_dataset=forest_dataset,
+                species_extinction_dataset=species_extinction_dataset,
+                final_species_ids=final_species_ids,
+                pressure_levels=pressure_levels,
+            )
 
         if snapshot is not None:
-            count += 1
             snapshots_by_timestamp[timestamp] = snapshot
 
     # now generate batches from all pairs of timestamps
@@ -1174,10 +1175,10 @@ def create_batches(
         # for i in range(0, len(climate_timestamps) - 1, 2)
         # instead if we want all the transitions: [0,1], [1,2], [2,3] ...
         for i in range(len(climate_timestamps) - 1)
-        # TODO: need to avoid writing the same timestamp to multiple files, it's a waste of compute and space
     ]
     # now write the batches
     os.makedirs(paths.BATCHES_DATA_DIR, exist_ok=True)
+    count = 0
     for timestamps in tqdm(paired_timestamps, desc="Saving batches"):
         date1 = timestamps[0].strftime("%Y-%m-%d_%H-%M-%S")
         date2 = timestamps[1].strftime("%Y-%m-%d_%H-%M-%S")
@@ -1186,7 +1187,6 @@ def create_batches(
         )
 
         print(f"Saving timestamps pair: ({timestamps[0]}, {timestamps[1]})")
-        print(batch_file)
 
         if os.path.exists(batch_file):
             print(
@@ -1195,8 +1195,8 @@ def create_batches(
             continue
 
         # here combine
-        snapshot_1 = snapshots_by_timestamp[timestamps[0]]
-        snapshot_2 = snapshots_by_timestamp[timestamps[1]]
+        snapshot_1 = snapshots_by_timestamp.get(timestamps[0], None)
+        snapshot_2 = snapshots_by_timestamp.get(timestamps[1], None)
         if snapshot_1 and snapshot_2:
             batch = combine_snapshots_into_batch(
                 snapshots=[snapshot_1, snapshot_2],
@@ -1215,10 +1215,14 @@ def create_batches(
             start_time = datetime.now()
             torch.save(batch, batch_file)
             end_time = datetime.now()
+            count += 1
+            print("Created batch file:", batch_file)
             print(
                 "TIME: write_batch:",
                 end_time - start_time,
             )
+        else:
+            print(f"Skipping batch for {date1} to {date2} due to missing snapshots.")
 
     return count
 
@@ -1267,83 +1271,102 @@ def get_paths_for_files_pairs_of_days(era5_directory: str) -> List[Tuple[Dict, D
     return all_values
 
 
-def create_batches_for_pair_of_days(
-    atmospheric_dataset_day1_path: str,
-    single_dataset_day1_path: str,
-    surface_dataset_day1_path: str,
-    atmospheric_dataset_day2_path: str,
-    single_dataset_day2_path: str,
-    surface_dataset_day2_path: str,
-    species_dataset: pd.DataFrame,
-    agriculture_dataset: pd.DataFrame,
-    forest_dataset: xr.Dataset,
-    land_dataset: xr.Dataset,
-    species_extinction_dataset: xr.Dataset,
-) -> int:
-    all_files = [
-        atmospheric_dataset_day1_path,
-        single_dataset_day1_path,
-        surface_dataset_day1_path,
-        atmospheric_dataset_day2_path,
-        single_dataset_day2_path,
-        surface_dataset_day2_path,
-    ]
-    valid_files = process_netcdf_files(all_files)
+def create_era5_range(
+    end_index: int,
+    start_index: int,
+    include_day_after_end: bool,
+    paths_by_day: List[Tuple[str, str, str]],
+) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
 
-    if len(valid_files) < 6:
-        non_valid_files = set(all_files) - set(valid_files)
-        print(
-            f"Skipping date due to missing or invalid files: {non_valid_files}.",
+    assert start_index >= 0, f"start_index {start_index} must be a positive integer"
+    assert end_index >= 0, f"end_index {end_index} must be a positive integer"
+    assert start_index < len(
+        paths_by_day
+    ), f"start_index {start_index} out of range. Max value is {len(paths_by_day)}"
+    assert end_index <= len(
+        paths_by_day
+    ), f"end_index {end_index} out of range. Max value is {len(paths_by_day)}"
+
+    if include_day_after_end:
+        end_index += 1
+        assert end_index <= len(
+            paths_by_day
+        ), f"end_index (including day after end) {end_index} out of range. Max value is {len(paths_by_day)}"
+
+    selected_days_paths = paths_by_day[start_index:end_index]
+    atmospheric_datasets = []
+    single_datasets = []
+    surface_datasets = []
+    for single_day_paths in selected_days_paths:
+        valid_files = process_netcdf_files(list(single_day_paths))
+        if len(valid_files) < 3:
+            non_valid_files = set(single_day_paths) - set(valid_files)
+            print(
+                f"Skipping date due to missing or invalid files: {non_valid_files}.",
+            )
+        else:
+            atmospheric_datasets.append(xr.open_dataset(single_day_paths[0]))
+            single_datasets.append(xr.open_dataset(single_day_paths[1]))
+            surface_datasets.append(xr.open_dataset(single_day_paths[2]))
+
+    if include_day_after_end and len(selected_days_paths) > 1:
+        # only include the first timestep from the last file
+        atmospheric_datasets[-1] = atmospheric_datasets[-1].isel(valid_time=0)
+        single_datasets[-1] = single_datasets[-1].isel(valid_time=0)
+        surface_datasets[-1] = surface_datasets[-1].isel(valid_time=0)
+
+    # here putting together the data for all selected days
+    atmospheric_dataset = xr.concat(atmospheric_datasets, dim="valid_time")
+    single_dataset = xr.concat(single_datasets, dim="valid_time")
+    surface_dataset = xr.concat(surface_datasets, dim="valid_time")
+
+    # show number of timestamps
+    print(
+        f"From {len(atmospheric_datasets)} days, selected {len(atmospheric_dataset.valid_time)} timestamps."
+    )
+
+    # close all files
+    for ds in atmospheric_datasets:
+        ds.close()
+    for ds in single_datasets:
+        ds.close()
+    for ds in surface_datasets:
+        ds.close()
+
+    return atmospheric_dataset, single_dataset, surface_dataset
+
+
+def get_chunk_parameters(
+    era5_paths_by_day: List[Tuple[str, str, str]], chunk_size: int = 10
+) -> list[Dict]:
+    all_params = []
+    for i in range(0, len(era5_paths_by_day), chunk_size):
+        start_index = i
+        effective_chunk_size = min(chunk_size, len(era5_paths_by_day) - i)
+        end_index = start_index + effective_chunk_size
+        if end_index < len(era5_paths_by_day):
+            include_day_after_end = True
+        else:
+            include_day_after_end = False
+        all_params.append(
+            {
+                "end_index": start_index + effective_chunk_size,
+                "start_index": start_index,
+                "include_day_after_end": include_day_after_end,
+                "paths_by_day": era5_paths_by_day,
+            }
         )
-        return 0
-
-    atmospheric_dataset_day1 = xr.open_dataset(atmospheric_dataset_day1_path)
-    single_dataset_day1 = xr.open_dataset(single_dataset_day1_path)
-    surface_dataset_day1 = xr.open_dataset(surface_dataset_day1_path)
-
-    atmospheric_dataset_day2 = xr.open_dataset(atmospheric_dataset_day2_path)
-    single_dataset_day2 = xr.open_dataset(single_dataset_day2_path)
-    surface_dataset_day2 = xr.open_dataset(surface_dataset_day2_path)
-
-    # here putting together the data for 2 days (2 different .nc files)
-    atmospheric_dataset = xr.concat(
-        [atmospheric_dataset_day1, atmospheric_dataset_day2], dim="valid_time"
-    )
-    single_dataset = xr.concat(
-        [single_dataset_day1, single_dataset_day2], dim="valid_time"
-    )
-    surface_dataset = xr.concat(
-        [surface_dataset_day1, surface_dataset_day2], dim="valid_time"
-    )
-
-    count = create_batches(
-        surface_dataset=surface_dataset,
-        single_dataset=single_dataset,
-        atmospheric_dataset=atmospheric_dataset,
-        species_dataset=species_dataset,
-        agriculture_dataset=agriculture_dataset,
-        forest_dataset=forest_dataset,
-        land_dataset=land_dataset,
-        species_extinction_dataset=species_extinction_dataset,
-    )
-
-    atmospheric_dataset_day1.close()
-    single_dataset_day1.close()
-    surface_dataset_day1.close()
-    atmospheric_dataset_day2.close()
-    single_dataset_day2.close()
-    surface_dataset_day2.close()
-
-    return count
+    return all_params
 
 
 def create_dataset(
-    species_file: str,
-    era5_directory: str,
+    species_file: str = str(paths.SPECIES_DATASET),
+    era5_directory: str = str(paths.ERA5_DIR),
     agriculture_file: str = str(paths.AGRICULTURE_COMBINED_FILE),
     land_file: str = str(paths.LAND_COMBINED_FILE_NC),
     forest_file: str = str(paths.FOREST_FILE_NC),
     species_extinction_file: str = str(paths.SPECIES_EXTINCTION_FILE_NC),
+    dry_run: bool = False,
 ):
     """
     Create DataBatches from the multimodal and ERA5 datasets and save the resulting batches
@@ -1375,27 +1398,33 @@ def create_dataset(
     species_extinction_dataset = xr.open_dataset(species_extinction_file)
 
     # this depends on date, so is passed as path
-    pair_of_days_paths = get_paths_for_files_pairs_of_days(era5_directory)
+    # pair_of_days_paths = get_paths_for_files_pairs_of_days(era5_directory)
+    paths_by_day = load_era5_files_grouped_by_date(era5_directory)
 
-    for i, (day_1_path, day_2_paths) in enumerate(pair_of_days_paths):
-        atmospheric_dataset_day1_path = day_1_path["atmospheric"]
-        single_dataset_day1_path = day_1_path["single"]
-        surface_dataset_day1_path = day_1_path["surface"]
-        atmospheric_dataset_day2_path = day_2_paths["atmospheric"]
-        single_dataset_day2_path = day_2_paths["single"]
-        surface_dataset_day2_path = day_2_paths["surface"]
-
-        count = create_batches_for_pair_of_days(
-            atmospheric_dataset_day1_path=atmospheric_dataset_day1_path,
-            single_dataset_day1_path=single_dataset_day1_path,
-            surface_dataset_day1_path=surface_dataset_day1_path,
-            atmospheric_dataset_day2_path=atmospheric_dataset_day2_path,
-            single_dataset_day2_path=single_dataset_day2_path,
-            surface_dataset_day2_path=surface_dataset_day2_path,
+    chunk_size = 10  # 10 days together # TODO: as parameter?
+    parameters_lists = get_chunk_parameters(paths_by_day, chunk_size)
+    for parameters in tqdm(parameters_lists, desc="Processing chunks"):
+        era5_pairs_range = create_era5_range(
+            end_index=parameters["end_index"],
+            start_index=parameters["start_index"],
+            include_day_after_end=parameters["include_day_after_end"],
+            paths_by_day=paths_by_day,
+        )
+        atmospheric_dataset, single_dataset, surface_dataset = era5_pairs_range
+        # create batches for this range
+        count = create_batches(
+            surface_dataset=surface_dataset,
+            single_dataset=single_dataset,
+            atmospheric_dataset=atmospheric_dataset,
             species_dataset=species_dataset,
             agriculture_dataset=agriculture_dataset,
             forest_dataset=forest_dataset,
             land_dataset=land_dataset,
             species_extinction_dataset=species_extinction_dataset,
+            dry_run=dry_run,
         )
-        print(f"successfully created {count} batches for pair of days")
+        print(f"successfully created {count} batches with parameters: {parameters}")
+
+
+if __name__ == "__main__":
+    create_dataset(dry_run=False)

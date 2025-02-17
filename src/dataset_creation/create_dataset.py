@@ -706,13 +706,19 @@ def create_snapshot_for_timestamp(
         land_dataset.longitude.to_numpy(),
     )
 
-    variable = land_dataset[new_ndvi_column]
-    tensor = get_tensor_from_xarray_dataarray(variable)
-    land_variables["NDVI"][t, :, :] = tensor
+    if new_ndvi_column in land_dataset:
+        variable = land_dataset[new_ndvi_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        land_variables["NDVI"][t, :, :] = tensor
+    else:
+        print(f"NDVI column {new_ndvi_column} not found in land dataset.")
 
-    variable = land_dataset[new_land_column]
-    tensor = get_tensor_from_xarray_dataarray(variable)
-    land_variables["Land"][t, :, :] = tensor
+    if new_land_column in land_dataset:
+        variable = land_dataset[new_land_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        land_variables["Land"][t, :, :] = tensor
+    else:
+        print(f"Land column {new_land_column} not found in land dataset.")
 
     # # AGRICULTURE (TODO: broken!!!)
     # agriculture_fields_mapping = {
@@ -737,17 +743,22 @@ def create_snapshot_for_timestamp(
     #     agriculture_variables[new_field][t, :, :] = tensor
 
     # FOREST
+    new_forest_column = f"Forest_{year}"
     check_latlon_ranges(
         lat_range,
         lon_range,
         forest_dataset.latitude.to_numpy(),
         forest_dataset.longitude.to_numpy(),
     )
-    variable = forest_dataset[f"Forest_{year}"]
-    tensor = get_tensor_from_xarray_dataarray(variable)
-    forest_variables["Forest"][t, :, :] = tensor
+    if new_forest_column in forest_dataset:
+        variable = forest_dataset[new_forest_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        forest_variables["Forest"][t, :, :] = tensor
+    else:
+        print(f"Forest column {new_forest_column} not found in forest dataset.")
 
     # EXTINCTION
+    new_extinction_column = f"RLI_{year}"
     check_latlon_ranges(
         lat_range,
         lon_range,
@@ -755,9 +766,14 @@ def create_snapshot_for_timestamp(
         species_extinction_dataset.longitude.to_numpy(),
     )
 
-    variable = species_extinction_dataset[f"RLI_{year}"]
-    tensor = get_tensor_from_xarray_dataarray(variable)
-    species_extinction_variables["ExtinctionValue"][t, :, :] = tensor
+    if new_extinction_column in species_extinction_dataset:
+        variable = species_extinction_dataset[new_extinction_column]
+        tensor = get_tensor_from_xarray_dataarray(variable)
+        species_extinction_variables["ExtinctionValue"][t, :, :] = tensor
+    else:
+        print(
+            f"Extinction column {new_extinction_column} not found in extinction dataset."
+        )
 
     for lat_idx, lat in enumerate(lat_range):
         for lon_idx, lon in enumerate(lon_range):

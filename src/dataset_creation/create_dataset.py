@@ -224,21 +224,21 @@ def combine_time_axis_nested_dicts_variables(
     assert len(keys_sets) == 1, f"multiple keys_sets: {keys_sets}"
     keys = keys_sets.pop()
     result = {}
-    # TODO: function broken, fix it
     for key in keys:
-        for dict_single in nested_dicts:
-            value = dict_single[key]
-            if isinstance(value, dict):
-                result[key] = combine_time_axis_nested_dicts_variables(
-                    nested_dicts[key]
-                )
-            elif isinstance(value, torch.Tensor):
-                assert (
-                    value.shape[0] == 1
-                ), f"shape[0] must be 1: {value.shape} (key: {key})"
-                result[key] = torch.vstack(nested_dicts[key])
-            else:
-                raise ValueError(f"Unsupported value type: {type(value)}")
+        types = set([type(d[key]) for d in nested_dicts])
+        assert len(types) == 1, f"types are different at key {key}: {types}"
+        single_type = types.pop()
+        if single_type == dict:
+            result[key] = combine_time_axis_nested_dicts_variables(
+                [d[key] for d in nested_dicts]
+            )
+        elif single_type == torch.Tensor:
+            assert all(
+                [d[key].shape[0] == 1 for d in nested_dicts]
+            ), f"shape[0] != 1 at key {key}"
+            result[key] = torch.vstack([d[key] for d in nested_dicts])
+        else:
+            raise ValueError(f"Unsupported type at key {key}: {single_type}")
     return result
 
 
@@ -246,83 +246,8 @@ def combine_snapshots_into_batch(
     snapshots: List[Dict],
     metadata: Dict,
 ):
-    # batch = combine_time_axis_nested_dicts_variables(snapshots) # TODO: broken
-    batch = {
-        "surface_variables": {
-            "t2m": torch.vstack([el["surface_variables"]["t2m"] for el in snapshots]),
-            "msl": torch.vstack([el["surface_variables"]["msl"] for el in snapshots]),
-        },
-        "single_variables": {
-            "lsm": torch.vstack([el["single_variables"]["lsm"] for el in snapshots]),
-        },
-        "atmospheric_variables": {
-            "z": torch.vstack([el["atmospheric_variables"]["z"] for el in snapshots]),
-            "t": torch.vstack([el["atmospheric_variables"]["t"] for el in snapshots]),
-        },
-        "species_variables": {
-            "dynamic": {
-                "Distribution": torch.vstack(
-                    [
-                        el["species_variables"]["dynamic"]["Distribution"]
-                        for el in snapshots
-                    ]
-                ),
-            },
-            "metadata": {
-                "Phylum": torch.vstack(
-                    [el["species_variables"]["metadata"]["Phylum"] for el in snapshots]
-                ),
-                "Genus": torch.vstack(
-                    [el["species_variables"]["metadata"]["Genus"] for el in snapshots]
-                ),
-                "Class": torch.vstack(
-                    [el["species_variables"]["metadata"]["Class"] for el in snapshots]
-                ),
-                "Order": torch.vstack(
-                    [el["species_variables"]["metadata"]["Order"] for el in snapshots]
-                ),
-                "Family": torch.vstack(
-                    [el["species_variables"]["metadata"]["Family"] for el in snapshots]
-                ),
-                "Redlist": torch.vstack(
-                    [el["species_variables"]["metadata"]["Redlist"] for el in snapshots]
-                ),
-            },
-        },
-        "species_extinction_variables": {
-            "ExtinctionValue": torch.vstack(
-                [
-                    el["species_extinction_variables"]["ExtinctionValue"]
-                    for el in snapshots
-                ]
-            ),
-        },
-        "land_variables": {
-            "NDVI": torch.vstack([el["land_variables"]["NDVI"] for el in snapshots]),
-            "Land": torch.vstack([el["land_variables"]["Land"] for el in snapshots]),
-        },
-        "agriculture_variables": {
-            "AgricultureLand": torch.vstack(
-                [el["agriculture_variables"]["AgricultureLand"] for el in snapshots]
-            ),
-            "AgricultureIrrLand": torch.vstack(
-                [el["agriculture_variables"]["AgricultureIrrLand"] for el in snapshots]
-            ),
-            "ArableLand": torch.vstack(
-                [el["agriculture_variables"]["ArableLand"] for el in snapshots]
-            ),
-            "Cropland": torch.vstack(
-                [el["agriculture_variables"]["Cropland"] for el in snapshots]
-            ),
-        },
-        "forest_variables": {
-            "Forest": torch.vstack(
-                [el["forest_variables"]["Forest"] for el in snapshots]
-            ),
-        },
-        "batch_metadata": metadata,
-    }
-    # batch["metadata"] = metadata
+    batch = combine_time_axis_nested_dicts_variables(snapshots)
+    batch["batch_metadata"] = metadata
     return batch
 
 
@@ -1383,6 +1308,7 @@ def create_dataset(
     forest_file: str = str(paths.FOREST_FILE_NC),
     species_extinction_file: str = str(paths.SPECIES_EXTINCTION_FILE_NC),
     dry_run: bool = False,
+    chunk_size: int = 10,
 ):
     """
     Create DataBatches from the multimodal and ERA5 datasets and save the resulting batches
@@ -1417,7 +1343,6 @@ def create_dataset(
     # pair_of_days_paths = get_paths_for_files_pairs_of_days(era5_directory)
     paths_by_day = load_era5_files_grouped_by_date(era5_directory)
 
-    chunk_size = 10  # 10 days together # TODO: as parameter?
     parameters_lists = get_chunk_parameters(paths_by_day, chunk_size)
     for parameters in tqdm(parameters_lists, desc="Processing chunks"):
         era5_pairs_range = create_era5_range(

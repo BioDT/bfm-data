@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10,<3.13"
 xenopy = "^0.0.4"
-torchaudio = "^2.3.1"
+torchaudio = "^2.5.1"
 pycountry = "^24.6.1"
 flake8-pyproject="^1.2.3"
 requests = "^2.32.3"
@@ -21,14 +21,14 @@ path = "^16.14.0"
 cdsapi = "^0.7.2"
 pydub = "^0.25.1"
 librosa = "^0.10.2.post1"
-torch = "^2.3.1"
+torch = "^2.5.1"
 rich = "^13.7.1"
 matplotlib = "^3.9.1"
 pandas = "^2.2.2"
 pyarrow = "^17.0.0"
 fastparquet = "^2024.5.0"
 xarray = "^2024.7.0"
-torchvision = "^0.19.0"
+torchvision = "^0.20.1"
 opencv-python = "^4.10.0.84"
 scikit-image = "^0.24.0"
 torchtext = "^0.18.0"
@@ -62,6 +62,7 @@ run-app = "src.main:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
+memray = "^1.15.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -70,6 +71,13 @@ build-backend = "poetry.core.masonry.api"
 [tool.flake8]
 extend-ignore = ["D203", "E203", "E251", "E266", "E302", "E305", "E401", "E402", "E501", "F401", "F403", "W503"]
 exclude = [".git", "__pycache__", "dist", "venv"]
+
+[tool.pyright]
+reportPrivateImportUsage = false
+exclude = [
+    "**/venv",
+    "venv",
+]
 
 [tool.isort]
 atomic = true

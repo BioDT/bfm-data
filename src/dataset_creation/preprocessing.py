@@ -51,9 +51,9 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
         )
 
         dataset["Timestamp"] = dataset["Timestamp"].apply(
-            lambda ts: (np.datetime64(ts).astype("datetime64[s]"))
-            if pd.notnull(ts)
-            else None
+            lambda ts: (
+                (np.datetime64(ts).astype("datetime64[s]")) if pd.notnull(ts) else None
+            )
         )
 
     categorical_columns = [
@@ -68,9 +68,11 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
     for column in categorical_columns:
         if column in dataset.columns:
             dataset[column] = dataset[column].apply(
-                lambda x: label_encode(pd.DataFrame({column: [x]}), column).item()
-                if pd.notnull(x)
-                else None
+                lambda x: (
+                    label_encode(pd.DataFrame({column: [x]}), column).item()
+                    if pd.notnull(x)
+                    else None
+                )
             )
 
     dataset["Latitude"] = dataset["Latitude"].apply(
@@ -84,11 +86,11 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
     for column in tensor_columns:
         if column in dataset.columns:
             dataset[column] = dataset[column].apply(
-                lambda x: np.array(x)
-                if isinstance(x, torch.Tensor)
-                else x
-                if x is not None
-                else None
+                lambda x: (
+                    np.array(x)
+                    if isinstance(x, torch.Tensor)
+                    else x if x is not None else None
+                )
             )
 
     dataset["Latitude"] = dataset["Latitude"].apply(
@@ -242,9 +244,11 @@ def merge_timestamps(
     }
 
     species_timestamps = {
-        (pd.to_datetime(ts[0]).to_pydatetime(),)
-        if isinstance(ts, tuple)
-        else (pd.to_datetime(ts).to_pydatetime(),)
+        (
+            (pd.to_datetime(ts[0]).to_pydatetime(),)
+            if isinstance(ts, tuple)
+            else (pd.to_datetime(ts).to_pydatetime(),)
+        )
         for ts in species_dataset["Timestamp"].unique()
         if ts is not None and pd.notna(ts)
     }
@@ -310,7 +314,7 @@ def initialize_climate_tensors(
     T: int,
     pressure_levels: int = 13,
     placeholder_value: float = float("nan"),
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Dict[str, torch.Tensor]]:
     """
     Create tensors for surface, atmospheric, and single variables based on the dataset's variables, initialized with a placeholder value (NaN by default).
 
@@ -463,8 +467,8 @@ def initialize_species_tensors(
     dynamic_shapes = {
         # "Image": (3, 64, 64),
         # "Audio": (1, 13, 1),
-        "Description": (64, 64),
-        "eDNA": (256,),
+        # "Description": (64, 64),
+        # "eDNA": (256,),
         "Distribution": (),
     }
 

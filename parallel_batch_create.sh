@@ -29,7 +29,7 @@
 # SBATCH --cpus-per-task=16
 
 
-CHUNK_SIZE=5 # this means 10 days of data in 1 job (estimated ~5 minutes for each day)
+CHUNK_SIZE=5 # this means 5 days of data in 1 job (estimated ~5 minutes for each day)
 
 # use:
 # sbatch -a 0-1632 parallel_batch_create.sh

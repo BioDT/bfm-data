@@ -3,6 +3,8 @@ from typing import List
 import torch
 import typer
 
+app = typer.Typer(pretty_exceptions_enable=False)
+
 
 def format_prefix(prefix: List[str]) -> str:
     return ".".join(prefix)
@@ -11,8 +13,16 @@ def format_prefix(prefix: List[str]) -> str:
 def visit_obj(obj, prefix: List[str] = []):
     if isinstance(obj, torch.Tensor):
         nan_values = torch.isnan(obj.view(-1)).sum().item()
+        inf_values = torch.isinf(obj.view(-1)).sum().item()
         tot_values = obj.numel()
-        print(format_prefix(prefix), obj.shape, f"NaN {nan_values/tot_values:.5%}")
+        values_not_nan = obj[~torch.isnan(obj)]
+        values_valid = values_not_nan[~torch.isinf(values_not_nan)]
+        res_str = f"{format_prefix(prefix)} {obj.shape} NaN {nan_values/tot_values:.5%} Inf {inf_values/tot_values:.5%}"
+        if values_not_nan.numel():
+            min_not_nan = values_valid.min().item()
+            max_not_nan = values_valid.max().item()
+            res_str += f" min_max range: [{min_not_nan}, {max_not_nan}]"
+        print(res_str)
     elif isinstance(obj, dict):
         for k, v in obj.items():
             visit_obj(v, prefix + [k])
@@ -34,6 +44,7 @@ def visit_obj(obj, prefix: List[str] = []):
         print(format_prefix(prefix), "has type not supported:", type(obj))
 
 
+@app.command()
 def inspect_batch(file_path: str):
     data = torch.load(file_path, weights_only=True)
     visit_obj(data)
@@ -45,4 +56,4 @@ if __name__ == "__main__":
     # /projects/prjs1134/data/projects/biodt/storage/batches_2024_11_21/batch_2000-01-01_2000-01-04.pt
     ## sparse (broken???)
     # /projects/prjs1134/data/projects/biodt/storage/batches_2024_11_21/batch_2000-01-01_00-00-00_to_2000-01-01_06-00-00.pt
-    typer.run(inspect_batch)
+    app()

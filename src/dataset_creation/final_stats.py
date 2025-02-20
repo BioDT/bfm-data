@@ -63,13 +63,13 @@ class OnlineMeanAndVariance:
     @property
     def std(self):
         return np.sqrt(self.variance)
-    
+
     @property
     def min(self):
         if self._min == float("inf"):
             return 0.0
         return self._min
-    
+
     @property
     def max(self):
         if self._max == float("-inf"):
@@ -177,7 +177,13 @@ def get_mean_std_min_max_count_by_key(
     count_valid_by_key = {}
     for key, accumulator in accumulator_dicts.items():
         if isinstance(accumulator, dict):
-            means_by_key[key], std_by_key[key], min_by_key[key], max_by_key[key], count_valid_by_key[key] = get_mean_std_min_max_count_by_key(accumulator)
+            (
+                means_by_key[key],
+                std_by_key[key],
+                min_by_key[key],
+                max_by_key[key],
+                count_valid_by_key[key],
+            ) = get_mean_std_min_max_count_by_key(accumulator)
         elif isinstance(accumulator, list):
             means_by_key[key] = [acc.mean for acc in accumulator]
             std_by_key[key] = [acc.std.item() for acc in accumulator]
@@ -236,18 +242,23 @@ def compute_and_save_stats(
         for batch in tqdm(all_batches, desc="Calculating stats")
     ]
     # then get the values
-    means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key = get_mean_std_min_max_count_by_key(accumulator_dicts)
+    means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key = (
+        get_mean_std_min_max_count_by_key(accumulator_dicts)
+    )
     print("means_by_key", means_by_key)
     print("std_by_key", std_by_key)
     print("mins_by_key", mins_by_key)
     print("maxs_by_key", maxs_by_key)
     print("counts_by_key", counts_by_key)
-    res = combine_dicts_by_key([means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key], names=["mean", "std", "min", "max", "count_valid"])
+    res = combine_dicts_by_key(
+        [means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key],
+        names=["mean", "std", "min", "max", "count_valid"],
+    )
     print(res)
-    output_file_path = BATCHES_DATA_DIR / "statistics.json"
+    output_file_path = batches_dir / "statistics.json"
     with open(output_file_path, "w") as f:
         json.dump(res, f, indent=2)
-    print(f"Saved means and stds to {output_file_path}")
+    print(f"Saved statistics to {output_file_path}")
 
 
 if __name__ == "__main__":

@@ -244,7 +244,7 @@ def compute_and_save_stats(
     print("counts_by_key", counts_by_key)
     res = combine_dicts_by_key([means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key], names=["mean", "std", "min", "max", "count_valid"])
     print(res)
-    output_file_path = BATCHES_DATA_DIR / "means_and_stds.json"
+    output_file_path = BATCHES_DATA_DIR / "statistics.json"
     with open(output_file_path, "w") as f:
         json.dump(res, f, indent=2)
     print(f"Saved means and stds to {output_file_path}")

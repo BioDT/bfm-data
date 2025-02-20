@@ -233,7 +233,7 @@ def compute_and_save_stats(
             accumulator_dicts=accumulator_dicts,
             dimensions_to_keep_by_key=dimensions_to_keep_by_key,
         )
-        for batch in tqdm(all_batches, desc="Calculating means and stds")
+        for batch in tqdm(all_batches, desc="Calculating stats")
     ]
     # then get the values
     means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key = get_mean_std_min_max_count_by_key(accumulator_dicts)

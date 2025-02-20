@@ -17,8 +17,10 @@ app = typer.Typer(pretty_exceptions_enable=False)
 
 excluded_keys = ["batch_metadata", "metadata"]
 dimensions_to_keep_by_key = {
-    "species_variables.dynamic": {
-        "Distribution": [3],  # [time, lat, lon, species]
+    "species_variables": {
+        "dynamic": {
+            "Distribution": [3],  # [time, lat, lon, species]
+        },
     },
     "atmospheric_variables": {
         "z": [1],  # [time, z, lat, lon]
@@ -35,6 +37,8 @@ class OnlineMeanAndVariance:
 
     def __init__(self, iterable=None, ddof=0):
         self.ddof, self.n, self.mean, self.M2 = ddof, 0, 0.0, 0.0
+        self._min = float("inf")
+        self._max = float("-inf")
         if iterable is not None:
             for datum in iterable:
                 self.include(datum)
@@ -44,6 +48,10 @@ class OnlineMeanAndVariance:
         self.delta = datum - self.mean
         self.mean += self.delta / self.n
         self.M2 += self.delta * (datum - self.mean)
+        if datum < self._min:
+            self._min = datum
+        if datum > self._max:
+            self._max = datum
 
     @property
     def variance(self):
@@ -55,6 +63,18 @@ class OnlineMeanAndVariance:
     @property
     def std(self):
         return np.sqrt(self.variance)
+    
+    @property
+    def min(self):
+        if self._min == float("inf"):
+            return 0.0
+        return self._min
+    
+    @property
+    def max(self):
+        if self._max == float("-inf"):
+            return 0.0
+        return self._max
 
 
 def flatten_dimensions(
@@ -147,21 +167,30 @@ def accumulate_by_key(
                 raise ValueError(f"Unexpected shape {shape}")
 
 
-def get_mean_and_std_by_key(
+def get_mean_std_min_max_count_by_key(
     accumulator_dicts: Dict,
-) -> Tuple[dict, dict]:
+) -> Tuple[dict, dict, dict, dict, dict]:
     means_by_key = {}
     std_by_key = {}
+    min_by_key = {}
+    max_by_key = {}
+    count_valid_by_key = {}
     for key, accumulator in accumulator_dicts.items():
         if isinstance(accumulator, dict):
-            means_by_key[key], std_by_key[key] = get_mean_and_std_by_key(accumulator)
+            means_by_key[key], std_by_key[key], min_by_key[key], max_by_key[key], count_valid_by_key[key] = get_mean_std_min_max_count_by_key(accumulator)
         elif isinstance(accumulator, list):
             means_by_key[key] = [acc.mean for acc in accumulator]
             std_by_key[key] = [acc.std.item() for acc in accumulator]
+            min_by_key[key] = [acc.min for acc in accumulator]
+            max_by_key[key] = [acc.max for acc in accumulator]
+            count_valid_by_key[key] = [float(acc.n) for acc in accumulator]
         else:
             means_by_key[key] = accumulator.mean
             std_by_key[key] = accumulator.std.item()
-    return means_by_key, std_by_key
+            min_by_key[key] = accumulator.min
+            max_by_key[key] = accumulator.max
+            count_valid_by_key[key] = float(accumulator.n)
+    return means_by_key, std_by_key, min_by_key, max_by_key, count_valid_by_key
 
 
 def combine_dicts_by_key(
@@ -207,10 +236,13 @@ def compute_and_save_stats(
         for batch in tqdm(all_batches, desc="Calculating means and stds")
     ]
     # then get the values
-    means_by_key, std_by_key = get_mean_and_std_by_key(accumulator_dicts)
+    means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key = get_mean_std_min_max_count_by_key(accumulator_dicts)
     print("means_by_key", means_by_key)
     print("std_by_key", std_by_key)
-    res = combine_dicts_by_key([means_by_key, std_by_key], names=["mean", "std"])
+    print("mins_by_key", mins_by_key)
+    print("maxs_by_key", maxs_by_key)
+    print("counts_by_key", counts_by_key)
+    res = combine_dicts_by_key([means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key], names=["mean", "std", "min", "max", "count_valid"])
     print(res)
     output_file_path = BATCHES_DATA_DIR / "means_and_stds.json"
     with open(output_file_path, "w") as f:

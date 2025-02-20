@@ -21,7 +21,9 @@ def visit_obj(obj, prefix: List[str] = []):
         if values_not_nan.numel():
             min_not_nan = values_valid.min().item()
             max_not_nan = values_valid.max().item()
-            res_str += f" min_max range: [{min_not_nan}, {max_not_nan}]"
+            mean = values_valid.mean().item()
+            std = values_valid.std().item()
+            res_str += f" min_max range: [{min_not_nan:.3f}, {max_not_nan:.3f}], mean: {mean:.3f}, std: {std:.3f}"
         print(res_str)
     elif isinstance(obj, dict):
         for k, v in obj.items():

@@ -32,7 +32,8 @@
 CHUNK_SIZE=5 # this means 5 days of data in 1 job (estimated ~5 minutes for each day)
 
 # use:
-# sbatch -a 0-1632 parallel_batch_create.sh
+# sbatch -a 0-1632 parallel_batch_create.sh (all batches, also with missing variables: from 2020-07-01 we start missing NDVI)
+# sbatch -a 0-1328 parallel_batch_create.sh (stop at 2020-06 where we have all the variables still)
 # first run the following to get the maximum index
 # python src/dataset_creation/parallel_batch.py get-max-index --chunk-size=$CHUNK_SIZE
 

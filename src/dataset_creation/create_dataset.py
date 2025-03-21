@@ -37,6 +37,8 @@ from src.dataset_creation.preprocessing import (
     reset_climate_tensors,
     reset_tensors,
 )
+from src.dataset_creation.species_utils import get_final_species
+from src.dataset_creation.utils import get_lat_lon_ranges
 
 
 def safe_tensor_conversion(value, dtype=torch.float32, default=0.0):
@@ -163,58 +165,6 @@ def get_tensor_from_xarray_dataarray(
         m = np.nan_to_num(m, nan=replace_nan_value)
     tensor = torch.tensor(m)
     return tensor
-
-
-def get_final_species(
-    species_dataset: pd.DataFrame, lat_range: np.ndarray, lon_range: np.ndarray
-):
-
-    # which species are most frequent in area? (not only today)
-    species_in_area_alltime = species_dataset[
-        (species_dataset["Latitude"] >= min(lat_range))
-        & (species_dataset["Latitude"] <= max(lat_range))
-        & (species_dataset["Longitude"] >= min(lon_range))
-        & (species_dataset["Longitude"] <= max(lon_range))
-    ]
-    counts = (
-        species_in_area_alltime.groupby(["Species"])["Species"]
-        .count()
-        .sort_values(ascending=False)
-    )
-    print("most frequent species (overall):", counts)
-    initial_species_ids = [
-        11824,
-        2082,
-        9783,
-        16067,
-        16348,
-        5997,
-        10261,
-        327,
-        13833,
-        9319,
-        18673,
-        16870,
-        10265,
-        15761,
-        9060,
-        10200,
-        2393,
-        511,
-        20832,
-        17663,
-        15861,
-    ]  # 21 species
-    max_species = 22
-    extra_species_limit = max_species - len(initial_species_ids)
-    assert (
-        extra_species_limit > 0
-    ), f"extra_species_limit must be positive: {max_species} - {len(initial_species_ids)}"
-    # take top species from counts
-    extra_species_ids = counts.index[:extra_species_limit].tolist()
-    final_species_ids = initial_species_ids + extra_species_ids
-    print("final_species_ids:", final_species_ids)
-    return final_species_ids
 
 
 def combine_time_axis_nested_dicts_variables(
@@ -966,35 +916,6 @@ def create_snapshot_for_timestamp(
     # )
 
     return batch
-
-
-def get_lat_lon_ranges(
-    min_lon: float = -30.0,
-    max_lon: float = 50.0,
-    min_lat: float = 34.0,
-    max_lat: float = 72.0,
-    lon_step: float = 0.25,
-    lat_step: float = 0.25,
-):
-    """
-    Get latitude and longitude ranges.
-
-    Args:
-        min_lon (float): The minimum longitude.
-        max_lon (float): The maximum longitude.
-        min_lat (float): The minimum latitude.
-        max_lat (float): The maximum latitude.
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray]: The latitude and longitude ranges.
-    """
-
-    lat_range = np.arange(min_lat, max_lat + lat_step, lat_step)
-    lon_range = np.arange(min_lon, max_lon + lon_step, lon_step)
-    # reverse lat_range to go from North to South
-    lat_range = lat_range[::-1]
-
-    return lat_range, lon_range
 
 
 def initialize_data(

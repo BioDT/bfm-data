@@ -1,7 +1,8 @@
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
+
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 import pandas as pd

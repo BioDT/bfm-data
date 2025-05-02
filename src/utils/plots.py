@@ -1,3 +1,5 @@
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
+
 # import cartopy.crs as ccrs
 # import matplotlib.pyplot as plt
 # import xarray as xr

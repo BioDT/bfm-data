@@ -1,4 +1,4 @@
-# src/dataset_creation/metadata.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import dataclasses
 from datetime import datetime

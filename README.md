@@ -1,110 +1,115 @@
-# bfm-data
+# BioCube: Engineering a Multimodal Dataset for Biodiversity 
+![Alt text](img/BioCube-description.png "BioCube Data Description")
 
 
+## Description
+This repository contains the code used to engineer **BioCube: A Multimodal Dataset for Biodiversity**. The paper accompanying this repository can be found at: TBA
+
+This codebase offers the below core functionalities:
+- Download
+- Ingestion
+- Preprocessing
+- File handling & storage
+- Dataset creation
+- Batch creation
 
 ## Getting started
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+To run the code, to add libraries, and basically to manage the application is done by poetry.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://ci.tno.nl/gitlab/biodiversity-foundation-model/bfm-data.git
-git branch -M main
-git push -uf origin main
+```bash
+poetry run run-app      # for running the code
+poetry add ...          # for adding dependencies
 ```
 
-## Integrate with your tools
+## Download (New) Data
 
-- [ ] [Set up project integrations](https://ci.tno.nl/gitlab/biodiversity-foundation-model/bfm-data/-/settings/integrations)
+Currently you can download data calling the respective modality-function from the `src/main.py`. We have made the workflow with args, so you can use it without any code changes or run the functions manually from main. The instructions with the params is in the main.
 
-## Collaborate with your team
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+```python
+era5(mode = 'range', start_year = '2020', end_year = '2024')
+```
 
-## Test and Deploy
+## Ingest Data
 
-Use the built-in continuous integration in GitLab.
+The relevant scripts can be found at `src/data_ingestion`. Here you can find scripts, to download data from csv files that have been located manually. Running the scripts for example for the indicators for the region or for the world will create a new csv in with the countries, the bounding boxes of each country and the values. 
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```python
+# To proccess all the agriculture files and create new csvs
+run_agriculture_data_processing(region = 'Europe', global_mode = False, irrigated = True, arable = True, cropland = True)
 
-***
+# And then to merge them in one file (/data/storage/data/Agriculture/Europe_combined_agriculture_data.csv)
+run_agriculture_merging()    
+```
 
-# Editing this README
+## Preprocess Data
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+The scripts for the preprocessing workflows can be found at `src/data_preprocessing`. The script `src/data_preprocessing/preprocessing.py` combines all the preprocessing functions, which then are used to create the species dataset parquet file.
 
-## Suggestions for a good README
+## Create the Dataset
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+Firstly we have to create the species dataset. Now we dont put all the images and the sounds inside. All the species data are located /data/projects/data/Life. Just run
+```python
+create_species_dataset(root_folder = /data/projects/data/Life, filepath = /data/projects/processed_data/species_dataset.parquet, start_year: int = 2000, end_year: int = 2020) 
+```
+When we create the species parquet we have all the data for species there. We have the CSVs for the indicators, and red list, ndvi and we are ready to create the data batches.
 
-## Name
-Choose a self-explaining name for your project.
+## Create the Batch
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+At this point, we can select any kind of modalities and slice them for specific coordinates or timestamps, producing a unified representation we define as **Batch**. The structure is very flexible and easy to use for any kind of downstream task or use case, especially for Foundation Model training. A visualisation is given below.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+![Alt text](img/data_batch.png "Data Batch Description")
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+To create Batches, just call the function:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```python
+create_dataset(
+    species_file="/data/projects/vector_db/species_dataset.parquet",
+    era5_directory=paths.ERA5_DIR,
+    agriculture_file=paths.AGRICULTURE_COMBINED_FILE,
+    land_file=paths.LAND_COMBINED_FILE,
+    forest_file=paths.FOREST_FILE,
+    species_extinction_file=paths.SPECIES_EXTINCTION_FILE,
+    load_type="day-by-day",
+)
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Storage
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+`Data` folder contains raw data.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+`Dataset_files` contains the csv files from the sources or txt files or json files, that we need them to extract the data and save them to data folder.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+`Modality` folders contain txt files which shows which folders contain which modalities. Is produced by command in terminal, run once, there is no code. It should be updated.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+`Processed_data` contains labels mapping, timestamps extracted from species dataset. And the species dataset.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+## Extra Information
+For more detailed information about the workflows settings available, have a look at [documentation](documentation.ipynb). 
 
 ## License
-For open source projects, say how it is licensed.
+See [`LICENSE.txt`](LICENSE.txt).
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
 
+## Acknowledgments
+*This study has received funding from the European Union's Horizon Europe research and innovation programme under grant agreement No 101057437 (BioDT project, https://doi.org/10.3030/101057437). Views and opinions expressed are those of the author(s) only and do not necessarily reflect those of the European Union or the European Commission. Neither the European Union nor the European Commission can be held responsible for them.
+This publication is part of the project Biodiversity Foundation Model of the research programme Computing Time on National Computing Facilities that is (co-) funded by the Dutch Research Council (NWO). We acknowledge NWO for providing access to Snellius, hosted by SURF through the Computing Time on National Computer Facilities call for proposals.
+This work used the Dutch national e-infrastructure with the support of the SURF Cooperative using grant no. EINF-10148*
 
 
 ## Useful commands
 
-Copy between hinton and snellius:
+Copy files between clusters: cluster_1=a cluster , cluster_2=SURF Snellius
 
-ssh to hinton
+ssh to cluster_1
 generate ssh key `ssh-keygen -t ed25519`
 copy your public key to https://portal.cua.surf.nl/user/keys `cat ~/.ssh/id_ed25519.pub`
-from hinton ssh to snellius to test: `ssh USERNAME@snellius.surf.nl then exit`
+from cluster_1 ssh to cluster_2 to test: `ssh USERNAME@snellius.surf.nl then exit`
 
 ```bash
 # one of these two, find which one is better / faster
-rsync -a --ignore-existing --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/prjs1134/data/projects/biodt/storage
-rsync -a --update --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/prjs1134/data/projects/biodt/storage
+rsync -a --ignore-existing --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/data/projects/biodt/storage
+rsync -a --update --info=progress2 --info=name0 /data/projects/biodt/storage/ USERNAME@snellius.surf.nl:/projects/data/projects/biodt/storage
 ```

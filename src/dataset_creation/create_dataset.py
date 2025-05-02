@@ -1,4 +1,4 @@
-# src/data_creation/create_dataset.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import math
 import os

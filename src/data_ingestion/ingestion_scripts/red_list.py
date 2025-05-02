@@ -1,4 +1,4 @@
-# src/data_ingestion/ingestion_scripts/red_list.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import csv
 import os

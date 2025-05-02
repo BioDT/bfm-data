@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "src"
-version = "0.1.0"
-description = "The goal of this project is to create a data pipeline to prepare biodiversity data for foundation model."
-authors = ["Stylianos Stasinos <stylianos.stasinos@tno.nl>"]
+version = "0.2.0"
+description = "BioCube - Engineering a Multimodal Dataset for Biodiversity"
+authors = ["Stylianos Stasinos <stylianos.stasinos@tno.nl>, Martino Mension <martino.mension@tno.nl>, Athanasios Trantas <thanasis.trantas@tno.nl>"]
 readme = "README.md"
+license = {file = "LICENSE.txt"}
 
 [tool.poetry.dependencies]
 python = "^3.10,<3.13"

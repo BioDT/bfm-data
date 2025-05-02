@@ -1,4 +1,4 @@
-# src/data_preprocessing/feature_extraction/text.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import torch
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer

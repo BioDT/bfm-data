@@ -1,12 +1,12 @@
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
+
 # USAGE:
 # python src/dataset_creation/parallel_batch.py create-list-file
 # python src/dataset_creation/parallel_batch.py run-single 0
 
-import json
 
 import typer
 import xarray as xr
-from tqdm import tqdm
 
 from src.config.paths import *
 from src.dataset_creation.create_dataset import (  # create_batches_for_pair_of_days,; get_paths_for_files_pairs_of_days,

@@ -1,4 +1,5 @@
-# src/config/paths.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
+
 import os
 import platform
 from pathlib import Path

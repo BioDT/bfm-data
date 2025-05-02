@@ -1,4 +1,4 @@
-# src/data_creation/save_data.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import base64
 import hashlib

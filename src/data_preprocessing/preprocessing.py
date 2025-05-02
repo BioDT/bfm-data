@@ -1,5 +1,4 @@
-# src/data_preprocessing/preprocess.py
-
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import torchaudio
 from PIL import Image

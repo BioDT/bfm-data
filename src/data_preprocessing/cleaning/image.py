@@ -1,4 +1,4 @@
-# src/data_preprocessing/cleaning/image.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import cv2
 import numpy as np

@@ -1,4 +1,4 @@
-# src/monitoring_logging/monitoring/memory.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import sys
 import threading

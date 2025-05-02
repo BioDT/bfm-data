@@ -1,11 +1,10 @@
-# src/data_creation/create_species_dataset.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import logging
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 from dateutil import parser
 

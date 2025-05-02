@@ -1,4 +1,4 @@
-# src/data_preprocessing/transformation/era5.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 from functools import partial
 from typing import Dict, Tuple

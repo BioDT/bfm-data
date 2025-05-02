@@ -1,4 +1,4 @@
-# src/data_ingestion/ingestion_scripts/forest.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 from src.config import paths
 from src.data_ingestion.ingestion_scripts.worldbank import WorldBankDataProcessor

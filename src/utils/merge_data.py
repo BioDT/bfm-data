@@ -1,4 +1,4 @@
-# src/utils/merge_data.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import os
 from datetime import datetime

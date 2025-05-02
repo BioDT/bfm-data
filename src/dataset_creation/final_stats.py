@@ -1,6 +1,7 @@
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
+
 import glob
 import json
-from collections import defaultdict
 from typing import Dict, List, Tuple
 
 import numpy as np

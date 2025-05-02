@@ -1,4 +1,4 @@
-# src/data_preprocessing/feature_extraction/edna.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 from collections import Counter
 

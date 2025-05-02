@@ -1,5 +1,6 @@
-import numpy as np
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
+import numpy as np
 
 def get_lat_lon_ranges(
     min_lon: float = -30.0,

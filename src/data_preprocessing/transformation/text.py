@@ -1,4 +1,4 @@
-# src/data_preprocessing/transformation/text.py
+"""Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
 import json
 import os

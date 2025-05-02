@@ -4,9 +4,9 @@ import os
 import unittest
 from urllib import request
 
-from src.config.paths import TEST_DATA_DIR
-from src.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
-from src.data_preprocessing.preprocessing import preprocess_audio
+from bfm_data.config.paths import TEST_DATA_DIR
+from bfm_data.data_ingestion.api_clients.xenocanto import XenoCantoDownloader
+from bfm_data.data_preprocessing.preprocessing import preprocess_audio
 
 
 class TestAudio(unittest.TestCase):

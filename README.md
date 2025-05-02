@@ -1,4 +1,4 @@
-# BioCube: Engineering a Multimodal Dataset for Biodiversity 
+# BioCube: Engineering a Multimodal Dataset for Biodiversity
 ![Alt text](img/BioCube-description.png "BioCube Data Description")
 
 
@@ -33,14 +33,14 @@ era5(mode = 'range', start_year = '2020', end_year = '2024')
 
 ## Ingest Data
 
-The relevant scripts can be found at `src/data_ingestion`. Here you can find scripts, to download data from csv files that have been located manually. Running the scripts for example for the indicators for the region or for the world will create a new csv in with the countries, the bounding boxes of each country and the values. 
+The relevant scripts can be found at `src/data_ingestion`. Here you can find scripts, to download data from csv files that have been located manually. Running the scripts for example for the indicators for the region or for the world will create a new csv in with the countries, the bounding boxes of each country and the values.
 
 ```python
 # To proccess all the agriculture files and create new csvs
 run_agriculture_data_processing(region = 'Europe', global_mode = False, irrigated = True, arable = True, cropland = True)
 
 # And then to merge them in one file (/data/storage/data/Agriculture/Europe_combined_agriculture_data.csv)
-run_agriculture_merging()    
+run_agriculture_merging()
 ```
 
 ## Preprocess Data
@@ -51,7 +51,7 @@ The scripts for the preprocessing workflows can be found at `src/data_preprocess
 
 Firstly we have to create the species dataset. Now we dont put all the images and the sounds inside. All the species data are located /data/projects/data/Life. Just run
 ```python
-create_species_dataset(root_folder = /data/projects/data/Life, filepath = /data/projects/processed_data/species_dataset.parquet, start_year: int = 2000, end_year: int = 2020) 
+create_species_dataset(root_folder = /data/projects/data/Life, filepath = /data/projects/processed_data/species_dataset.parquet, start_year: int = 2000, end_year: int = 2020)
 ```
 When we create the species parquet we have all the data for species there. We have the CSVs for the indicators, and red list, ndvi and we are ready to create the data batches.
 
@@ -87,7 +87,7 @@ create_dataset(
 `Processed_data` contains labels mapping, timestamps extracted from species dataset. And the species dataset.
 
 ## Extra Information
-For more detailed information about the workflows settings available, have a look at [documentation](documentation.ipynb). 
+For more detailed information about the workflows settings available, have a look at [documentation](documentation.ipynb).
 
 ## License
 See [`LICENSE.txt`](LICENSE.txt).

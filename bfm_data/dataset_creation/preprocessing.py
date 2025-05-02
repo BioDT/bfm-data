@@ -89,7 +89,9 @@ def preprocess_and_normalize_species_data(dataset: pd.DataFrame) -> pd.DataFrame
                 lambda x: (
                     np.array(x)
                     if isinstance(x, torch.Tensor)
-                    else x if x is not None else None
+                    else x
+                    if x is not None
+                    else None
                 )
             )
 

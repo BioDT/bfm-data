@@ -2,6 +2,7 @@
 
 import numpy as np
 
+
 def get_lat_lon_ranges(
     min_lon: float = -30.0,
     max_lon: float = 50.0,

@@ -244,7 +244,7 @@ def create_snapshot_for_timestamp(
     Returns:
         DataBatch: A DataBatch object containing both climate and species data for the given day.
     """
-    start_time_all_dates = datetime.now()
+    # start_time_all_dates = datetime.now()
 
     (
         climate_tensors,
@@ -818,10 +818,10 @@ def create_snapshot_for_timestamp(
                         if not agri_row.empty:
                             agri_value = agri_row.get(f"Agri_{year}", pd.NA)
                             if agri_value is not pd.NA:
-                                agriculture_variables[field][t, lat_idx, lon_idx] = (
-                                    torch.tensor(
-                                        agri_value.values[0], dtype=torch.float16
-                                    )
+                                agriculture_variables[field][
+                                    t, lat_idx, lon_idx
+                                ] = torch.tensor(
+                                    agri_value.values[0], dtype=torch.float16
                                 )
 
             # forest_at_location = forest_dataset[

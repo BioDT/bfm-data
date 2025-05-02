@@ -1,5 +1,6 @@
 """Copyright (C) 2025 TNO, The Netherlands. Licensed under the MIT license."""
 
+import os
 from typing import Dict, List
 
 import numpy as np
@@ -7,7 +8,14 @@ import pandas as pd
 import xarray as xr
 from tqdm import tqdm
 
-from bfm_data.config.paths import *
+from bfm_data.config.paths import (
+    FOREST_FILE,
+    FOREST_FILE_NC,
+    LAND_COMBINED_FILE,
+    LAND_COMBINED_FILE_NC,
+    SPECIES_EXTINCTION_FILE,
+    SPECIES_EXTINCTION_FILE_NC,
+)
 from bfm_data.dataset_creation.load_data import load_species_data, load_world_bank_data
 
 
@@ -76,11 +84,11 @@ def convert_csv_to_netcdf(
     if type_file == "species":
         raise NotImplementedError("Species dataset not implemented yet")
         # TODO: how to get distributions of different species?
-        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-        for species_id in df["Species"].unique():
-            # species_id = 13833
-            species_df = df[df["Species"] == species_id]
-            column_name = f"Species_{species_id}"
+        # df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+        # for species_id in df["Species"].unique():
+        #     # species_id = 13833
+        #     species_df = df[df["Species"] == species_id]
+        #     column_name = f"Species_{species_id}"
 
     elif type_file == "agriculture":
         # The column "Variable" says what the values in the columns represent (names "Agri_{YEAR}")

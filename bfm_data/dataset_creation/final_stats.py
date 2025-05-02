@@ -2,6 +2,7 @@
 
 import glob
 import json
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -9,7 +10,7 @@ import torch
 import typer
 from tqdm import tqdm
 
-from bfm_data.config.paths import *
+from bfm_data.config.paths import BATCHES_DATA_DIR
 
 # from sklearn import preprocessing
 
@@ -243,9 +244,13 @@ def compute_and_save_stats(
         for batch in tqdm(all_batches, desc="Calculating stats")
     ]
     # then get the values
-    means_by_key, std_by_key, mins_by_key, maxs_by_key, counts_by_key = (
-        get_mean_std_min_max_count_by_key(accumulator_dicts)
-    )
+    (
+        means_by_key,
+        std_by_key,
+        mins_by_key,
+        maxs_by_key,
+        counts_by_key,
+    ) = get_mean_std_min_max_count_by_key(accumulator_dicts)
     print("means_by_key", means_by_key)
     print("std_by_key", std_by_key)
     print("mins_by_key", mins_by_key)

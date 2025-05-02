@@ -13,4 +13,3 @@ source venv/bin/activate
 
 export PYTHONUNBUFFERED=1
 python src/dataset_creation/final_stats.py --batches-dir=/projects/prjs1134/data/projects/biodt/storage/batches_2025_03_05
-

@@ -2,7 +2,7 @@ MIT License
 
 Implementation of BioCube.
 
-Copyright (C) 2025 TNO. 
+Copyright (C) 2025 TNO.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

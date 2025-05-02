@@ -8,7 +8,14 @@
 import typer
 import xarray as xr
 
-from bfm_data.config.paths import *
+from bfm_data.config.paths import (
+    AGRICULTURE_COMBINED_FILE,
+    ERA5_DIR,
+    FOREST_FILE_NC,
+    LAND_COMBINED_FILE_NC,
+    SPECIES_DATASET,
+    SPECIES_EXTINCTION_FILE_NC,
+)
 from bfm_data.dataset_creation.create_dataset import (  # create_batches_for_pair_of_days,; get_paths_for_files_pairs_of_days,
     create_batches,
     create_era5_range,

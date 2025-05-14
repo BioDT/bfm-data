@@ -1,11 +1,11 @@
 [project]
 name = "bfm-data"
-version = "0.2.0"
+version = "0.3.0"
 description = "BioCube - Engineering a Multimodal Dataset for Biodiversity"
 authors = [
-    {name = "Stylianos Stasinos",email = "stylianos.stasinos@tno.nl"},
-    {name = "Martino Mensio",email = "martino.mensio@tno.nl"},
-    {name = "Athanasios Trantas",email = "thanasis.trantas@tno.nl"}
+    {name = "Stylianos Stasinos"},
+    {name = "Martino Mensio"},
+    {name = "Athanasios Trantas"}
 ]
 readme = "README.md"
 license = {file = "LICENSE.txt"}

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-
 import argparse, sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Tuple, List
 
 import pandas as pd
 from tqdm import tqdm
@@ -23,7 +22,7 @@ def load_folder(folder: Path) -> Dict[int, pd.DataFrame]:
     return dfs
 
 def preprocess_species(df: pd.DataFrame,
-                       res_deg: float = 0.25) -> pd.DataFrame:
+                       res_deg: float = 0.25, start_year: int = 2000) -> pd.DataFrame:
     """Map EEA->WGS, bin to res_deg grid, ensure full year/month grid with zeros.
 
     Any missing yearmonthday causes KeyError with context.
@@ -56,9 +55,11 @@ def preprocess_species(df: pd.DataFrame,
           ['occurrences'].sum()
           .rename(columns={'occurrences':'n','lon_bin':'lon','lat_bin':'lat'})
     )
-
-    # dynamic full span from data
-    y0, y1 = int(grouped['year'].min()), int(grouped['year'].max())
+    # determine fill span
+    y_data_min = int(grouped['year'].min())
+    y_data_max = int(grouped['year'].max())
+    y0 = min(start_year, y_data_min)
+    y1 = y_data_max
     years_full = list(range(y0, y1+1))
     months_full = list(range(1,13))
     lon_vals = grouped['lon'].unique()
@@ -77,7 +78,7 @@ def preprocess_species(df: pd.DataFrame,
     return full
 
 def compute_stats(df: pd.DataFrame) -> Dict:
-    """Return summary of 'n' and temporal coverage."""
+    """Return summary of 'n' species occurances and temporal coverage."""
     total = int(df["n"].sum())
     mean_ = float(df["n"].mean())
     mx = int(df["n"].max())
@@ -122,15 +123,15 @@ def main():
     ap = argparse.ArgumentParser(
         description="Prepare GBIF EEA-cube zips into unified 0.25° WGS-84 grids"
     )
-    ap.add_argument("--input-folder",  "-i", type=Path, required=True,
+    ap.add_argument("--input-folder", "-i", type=Path, required=True,
                     help="Folder of <specieskey>.zip GBIF downloads")
     ap.add_argument("--output-folder", "-o", type=Path, required=True,
                     help="Where to write processed per-species files")
-    ap.add_argument("--summary",       "-s", type=Path, default=None,
+    ap.add_argument("--summary", "-s", type=Path, default=None,
                     help="CSV file path to write summary statistics")
-    ap.add_argument("--res-deg",       "-r", type=float, default=0.25,
+    ap.add_argument("--res-deg", "-r", type=float, default=0.25,
                     help="Target grid resolution in degrees")
-    ap.add_argument("--fmt",           choices=["parquet","csv"], default="parquet")
+    ap.add_argument("--fmt", choices=["parquet","csv"], default="parquet")
     args = ap.parse_args()
 
     raw_dfs = load_folder(args.input_folder)
@@ -138,9 +139,7 @@ def main():
     proc_dfs: Dict[int,pd.DataFrame] = {}
     summary_rows = []
     for key, df in tqdm(raw_dfs.items(), desc="Preprocessing"):
-        # print(df["yearmonthday"])
-        df2 = preprocess_species(df,
-                                 res_deg=args.res_deg)
+        df2 = preprocess_species(df, res_deg=args.res_deg)
         proc_dfs[key] = df2
 
         stats = compute_stats(df2)

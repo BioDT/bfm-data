@@ -62,6 +62,7 @@ dependencies = [
    "reverse-geocode (>=1.6.5)",
    "typer (>=0.13.1)",
    "streamlit (>=1.45.1,<2.0.0)",
+   "h5netcdf (>=1.6.1,<2.0.0)",
 ]
 
 [tool.poetry.scripts]

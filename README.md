@@ -91,7 +91,7 @@ python bfm_data/dataset_creation/batch_creation/build_batches_monthly.py
 
 You can inspect the created Batches by using the `streamlit run batch_viewer.py --data_dir ./batches` that is located on the same folder as the previous scripts.
 
-To produce statistics from the Batches that can be used for downstream tasks (e.g. normalization), just run `python batch_stats.py batches/`
+To produce statistics from the Batches that can be used for downstream tasks (e.g. normalization), just run `python batch_stats.py --batch_dir batches --out batches_stats.json`
 
 ## Storage
 

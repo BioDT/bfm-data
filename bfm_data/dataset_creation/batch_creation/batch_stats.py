@@ -48,44 +48,37 @@ class Acc:
                 "nan_pct": _py(self.nan/total)}
 
 def compute_batch_stats(batch_dir: Path, out_json: Path = Path("all_batches_stats.json")):
-    pt_files = sorted(batch_dir.glob("batch_*.pt"))
-    if not pt_files:
-        raise RuntimeError("No batch_*.pt files found")
 
-    first = torch.load(pt_files[0], map_location="cpu", weights_only=False)
-    slot_vars: dict[str, List[str]] = first["variable_names"]
-    print("slot vars", slot_vars)
-    acc: Dict[str, Dict[str, Acc]] = {
-        slot: {v: Acc() for v in varlist} for slot, varlist in slot_vars.items()
-    }
+    files = sorted(batch_dir.glob("batch_*.pt"))
+    if not files:
+        raise RuntimeError("no batch files")
 
-    for pt in tqdm(pt_files, desc="Scanning batches", unit="batch"):
-        batch = torch.load(pt, map_location="cpu", weights_only=False)
-        for slot, varlist in batch["variable_names"].items():
-            tensor = batch.get(slot)
-            if tensor is None: continue
-            is_atmo = slot == "atmospheric_variables"
+    acc: Dict[str, Dict[str, Acc]] = {}
 
-            for vi, var in enumerate(varlist):
-                if var not in acc.setdefault(slot, {}):
-                    acc[slot][var] = Acc()
+    for f in tqdm(files, desc="Scanning", unit="batch"):
+        batch = torch.load(f, map_location="cpu")
 
-                arr = tensor[:, vi]
-                arr_np = arr.cpu().numpy().astype(np.float64).ravel()
-                acc[slot][var].update(arr_np)
+        for slot, var_dict in batch.items():
+            if not slot.endswith("_variables"):
+                continue
+            for var, ten in var_dict.items():
+                acc.setdefault(slot, {}).setdefault(var, Acc())
+                #  Shapes (2,H,W) or (2,C,H,W)
+                arr = ten.cpu().numpy().astype(np.float64).ravel()
+                acc[slot][var].update(arr)
 
-    out: Dict[str, Dict[str, Dict]] = {}
-    for slot, varmap in acc.items():
-        out[slot] = {v: a.finish() for v, a in varmap.items()}
+    out = {slot: {v: a.finish() for v,a in varmap.items()}
+           for slot, varmap in acc.items()}
 
     with open(out_json, "w") as fp:
         json.dump(out, fp, indent=2)
-    print(f"Wrote {out_json} ({len(pt_files)} batches)")
+    print(f"Wrote {out_json}  ({len(files)} batches)")
+
 
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(description="Stats for per-slot batches")
-    p.add_argument("batch_dir", type=Path)
+    p.add_argument("--batch_dir", default="batches", type=Path)
     p.add_argument("--out", default="all_batches_stats.json", type=Path)
     args = p.parse_args()
     compute_batch_stats(args.batch_dir, args.out)

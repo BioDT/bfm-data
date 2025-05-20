@@ -3144,6 +3144,25 @@ files = [
 ]
 
 [[package]]
+name = "h5netcdf"
+version = "1.6.1"
+description = "netCDF4 via h5py"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "h5netcdf-1.6.1-py3-none-any.whl", hash = "sha256:1ec75cabd6ab50c6e7109d0c6595eb2960ba0e79fef2257607ab80838d84e6f6"},
+    {file = "h5netcdf-1.6.1.tar.gz", hash = "sha256:7ef4ecd811374d94d29ac5e7f7db71ff59b55ef8eeefbe4ccc2c316853d31894"},
+]
+
+[package.dependencies]
+h5py = "*"
+packaging = "*"
+
+[package.extras]
+test = ["netCDF4", "pytest"]
+
+[[package]]
 name = "h5py"
 version = "3.12.1"
 description = "Read and write HDF5 files from Python"
@@ -8626,4 +8645,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "e310778f0ac814dec23808f3a17c837a8cb78f34d4ef8ab53db010910637fd55"
+content-hash = "2491f13c310cc28f739fbfbd5016a58da42cf0dcd9d9567eb1cd5400f25b34b7"

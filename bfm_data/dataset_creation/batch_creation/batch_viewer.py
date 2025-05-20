@@ -27,59 +27,64 @@ DATA_DIR = get_cli_dir()
 st.sidebar.title("Batch viewer")
 all_batches = sorted(DATA_DIR.glob("batch_*.pt"))
 if not all_batches:
-    st.sidebar.error("No batch_*.pt files found.")
+    st.sidebar.error(f"No batch_*.pt files in {DATA_DIR}")
     st.stop()
 
-batch_name = st.sidebar.selectbox("Select batch", [p.name for p in all_batches])
-batch = torch.load(DATA_DIR / batch_name, map_location="cpu", weights_only=False)
+batch_name = st.sidebar.selectbox(
+    "Choose batch", [p.name for p in all_batches])
+batch = torch.load(DATA_DIR / batch_name, map_location="cpu")
 
-available_slots = [k for k in batch.keys() if k.endswith("_variables")]
-slot = st.sidebar.selectbox("Data slot", available_slots)
+slot_options = [k for k in batch.keys() if k.endswith("_variables")]
+slot = st.sidebar.selectbox("Variable slot", slot_options)
 
-var_names = batch["variable_names"].get(slot, [])
-if not var_names:
-    st.warning(f"No variable list stored for slot '{slot}'.")
+var_list = list(batch.get(slot, {}).keys())
+if not var_list:
+    st.warning(f"No variables stored for slot '{slot}'.")
     st.stop()
-var_choice = st.sidebar.multiselect("Variable(s)", var_names, default=[var_names[0]])
+
+var_choice = st.sidebar.multiselect(
+    "Variable(s)", var_list, default=[var_list[0]])
+
 if not var_choice:
-    st.info("Pick at least one variable.")
+    st.info("Pick at least one variable")
     st.stop()
 
 pl_sel = None
-if slot == "atmospheric_variables":
-    pl = batch["pressure_levels"]
-    pl_sel = st.sidebar.multiselect("Pressure level(s) hPa", pl, default=[pl[0]])
+example_tensor = next(iter(batch[slot].values()))
+if example_tensor.ndim == 4:# (2,C,H,W)
+    pl_list = batch.get("batch_metadata", {}).get("pressure_levels")
+    if pl_list is None:
+        pl_list = list(range(example_tensor.shape[1]))
+    pl_sel = st.sidebar.multiselect("Pressure levels", pl_list, default=[pl_list[0]])
     if not pl_sel:
         st.stop()
 
-def plot_maps(day0, day1, lats, lons, title):
+def _plot_maps(day0, day1, lats, lons, title):
     proj = ccrs.PlateCarree()
     fig, ax = plt.subplots(1, 2, figsize=(9, 4), subplot_kw=dict(projection=proj))
-    for ax_i, data, lbl in zip(ax, (day0, day1), ("Month 1", "Month 2")):
+    for a, data, lbl in zip(ax, (day0, day1), ("Month 1", "Month 2")):
         data = np.asarray(data)
-        d_cyc, lon_cyc = add_cyclic_point(data, coord=lons)
-        mesh = ax_i.pcolormesh(lon_cyc, lats, d_cyc, cmap="viridis", transform=proj)
-        ax_i.add_feature(cfeature.COASTLINE, linewidth=0.4)
-        ax_i.set_title(f"{title}\n{lbl}")
+        cyc, lon_cyc = add_cyclic_point(data, coord=lons)
+        mesh = a.pcolormesh(lon_cyc, lats, cyc, transform=proj, cmap="viridis")
+        a.add_feature(cfeature.COASTLINE, linewidth=0.4)
+        a.set_title(f"{title}\n{lbl}")
     fig.colorbar(mesh, ax=ax.ravel().tolist(), shrink=0.75)
     st.pyplot(fig)
 
-lats = np.array(batch["batch_metadata"]["latitudes"])
-lons = np.array(batch["batch_metadata"]["longitudes"])
-ts = batch["batch_metadata"]["timestamp"]
+meta = batch["batch_metadata"]
+lats = np.array(meta["latitudes"])
+lons = np.array(meta["longitudes"])
+ts= meta["timestamp"]
 
 st.header(batch_name)
-st.caption(f"Times: {ts[0]} -> {ts[1]}")
-
-tensor = batch[slot]
+st.caption(f"{ts[0]}  ->  {ts[1]}")
 
 for v in var_choice:
-    vidx = var_names.index(v)
-    if slot == "atmospheric_variables":
-        for pl in pl_sel:
-            cidx = batch["pressure_levels"].index(pl)
-            data = tensor[:, vidx, cidx].numpy()
-            plot_maps(data[0], data[1], lats, lons, f"{v} {pl}hPa")
+    tensor = batch[slot][v]
+    if tensor.ndim == 3:
+        _plot_maps(tensor[0], tensor[1], lats, lons, v)
     else:
-        data = tensor[:, vidx].numpy()
-        plot_maps(data[0], data[1], lats, lons, v)
+        for pl in pl_sel:
+            cidx = batch["batch_metadata"]["pressure_levels"].index(pl)
+            _plot_maps(tensor[0, cidx], tensor[1, cidx], lats, lons,
+                        f"{v}  {pl} hPa")

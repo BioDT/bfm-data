@@ -21,7 +21,7 @@ VAR_CONFIG = {
     "edaphic_variables"       : ['stl1', 'stl2', 'swvl1', 'swvl2'],
     "climate_variables"       : [],#["tp", "d2m"],
     "forest_variables"        : [], 
-    "agriculture_variables"   : [],
+    "agriculture_variables"   : ['Agriculture', 'Arable', 'Cropland'],
     "land_variables"          : [],#["Land", "NDVI"],
     "species_variables"       : [],
     "redlist_variables"       : [],
@@ -33,6 +33,8 @@ BATCH_DIR = Path("batches")
 STATS_FILE = Path("batch_stats.parquet")
 DTYPE = np.float32
 CHUNKS = {"time": 1, "latitude": 160, "longitude": 280}
+YEAR_SUFFIX  = re.compile(r"_(\d{4})$")
+MMYY_SUFFIX  = re.compile(r"_(\d{1,2})/(\d{4})$")
 
 log = logging.getLogger("batch_builder")
 logging.basicConfig(level=logging.INFO,
@@ -76,6 +78,11 @@ def _idx(lat: np.ndarray, lon: np.ndarray):
     li[~ok] = lj[~ok] = -1
     return li, lj, ok
 
+def _maybe_fill_nan(t: torch.Tensor, fill_nan: bool) -> torch.Tensor:
+    if fill_nan:
+        return torch.nan_to_num(t, nan=0.0)
+    return t
+
 def _load_agriculture_slice(csv_path: Path,
                             months: list[pd.Timestamp]) -> xr.Dataset | None:
     df = pd.read_csv(csv_path)
@@ -115,10 +122,6 @@ def _load_agriculture_slice(csv_path: Path,
         )
 
     return xr.Dataset(ds_vars).chunk(CHUNKS) if ds_vars else None
-
-
-YEAR_SUFFIX  = re.compile(r"_(\d{4})$")
-MMYY_SUFFIX  = re.compile(r"_(\d{1,2})/(\d{4})$")
 
 # To be used for with the Combined files
 def _load_csv_tile(csv_path: Path,
@@ -348,7 +351,7 @@ def _load_species(path: Path,
     data_vars: Dict[str, xr.DataArray] = {}
 
     for sp, grp in df.groupby("Species"):
-        # prepare 2 × H × W arrays, zero-filled
+        # prepare 2 x H x W arrays, zero-filled
         dist = np.zeros((2, EXPECTED_LAT, EXPECTED_LON), dtype=DTYPE)
         mask = np.zeros_like(dist)
 
@@ -379,83 +382,65 @@ def _load_species(path: Path,
     return xr.Dataset(data_vars).chunk(CHUNKS)
 
 
-def _assemble_window(report: pd.DataFrame, t0: pd.Timestamp, t1: pd.Timestamp) -> dict:
-    """
-    Creates per modality / variable windowed slices for 2 timesteps (months)
-    Ensures all 
-    """
-    slot_buf: dict[str, list[torch.Tensor]] = {}
-    atmo_buf: dict[str, torch.Tensor] = {}
-    var_names: dict[str, list[str]] = {}
-    pl_list = None
+def _assemble_window(report: pd.DataFrame,
+                     t0: pd.Timestamp,
+                     t1: pd.Timestamp,
+                     fill_nan: bool) -> dict:
 
-    for _, row in report.query("modality == 'copernicus'").iterrows():
+    batch = {
+        "batch_metadata": {
+            "latitudes": GRID_LAT.tolist(),
+            "longitudes": GRID_LON.tolist(),
+            "timestamp": [str(t0), str(t1)],
+            "pressure_levels": None,
+            "species_list": None,
+        },
+        "surface_variables":      {},
+        "single_variables":       {},
+        "atmospheric_variables":  {},
+        "edaphic_variables":      {},
+        "climate_variables":      {},
+        "misc_variables":         {},
+        "forest_variables":       {},
+        "land_variables":         {},
+        "vegetation_variables":   {},
+        "agriculture_variables":  {},
+        "redlist_variables":      {},
+        "species_variables":      {},
+    }
+
+    for _, row in report.query("modality=='copernicus'").iterrows():
         ds = _load_era5([Path(row.path)], t0, t1)
         slot = row.planned_slot
         for v in ds.data_vars:
-            v_base = v
-            # print(f"Copernicus Variable {v}")
-            if VAR_CONFIG[slot] and v_base not in VAR_CONFIG[slot]:
+            if VAR_CONFIG[slot] and v not in VAR_CONFIG[slot]:
                 continue
-
+            da = ds[v].astype(DTYPE).values # (2,H,W) or (2,C,H,W)
+            ten = torch.from_numpy(da)
+            batch[slot][v] = _maybe_fill_nan(ten, fill_nan)
             if "pressure_level" in ds[v].dims:
-                arr = (ds[v]
-                       .astype(DTYPE)
-                       .transpose("time", "pressure_level", "latitude", "longitude")
-                       .values)
-                atmo_buf[v_base] = torch.from_numpy(arr)
-                if pl_list is None:
-                    pl_list = list(ds[v]["pressure_level"].values.astype(float))
-            else:
-                arr = ds[v].astype(DTYPE).values
-                slot_buf.setdefault(slot, []).append(torch.from_numpy(arr))
-            var_names.setdefault(slot, []).append(v_base)
+                batch["batch_metadata"]["pressure_levels"] = (ds[v]["pressure_level"].values.astype(float).tolist())
 
     for mod in ("forest", "agriculture", "land", "redlist", "vegetation"):
-        for _, row in report.query("modality == @mod").iterrows():
-            # print(f"Loading csv variable: {row.variables}")
+        for _, row in report.query("modality==@mod").iterrows():
             ds = _load_csv(Path(row.path), row.variables, t0, t1)
             if ds is None: continue
             slot = row.planned_slot
             for v in ds.data_vars:
                 if VAR_CONFIG[slot] and v not in VAR_CONFIG[slot]:
                     continue
-                arr = ds[v].values.astype(DTYPE)
-                slot_buf.setdefault(slot, []).append(torch.from_numpy(arr))
-                var_names.setdefault(slot, []).append(v)
+                ten = torch.from_numpy(ds[v].values.astype(DTYPE))
+                batch[slot][v] = _maybe_fill_nan(ten, fill_nan)
 
-    sp_df = report.query("modality == 'species'")
+    sp_df = report.query("modality=='species'")
     if not sp_df.empty:
         ds = _load_species(Path(sp_df.iloc[0].path), t0, t1)
-        slot = "species_variables"
+        species_list = []
         for v in ds.data_vars:
-            arr = ds[v].values.astype(DTYPE)
-            slot_buf.setdefault(slot, []).append(torch.from_numpy(arr))
-            var_names.setdefault(slot, []).append(v)
-
-    # print("Final build dictionary variables", var_names)
-    batch = {
-        "batch_metadata": {
-            "latitudes": GRID_LAT.tolist(),
-            "longitudes": GRID_LON.tolist(),
-            "timestamp": [str(t0), str(t1)],
-        },
-        "variable_names": var_names,
-    }
-
-    for slot, lst in slot_buf.items():
-        if lst:
-            batch[slot] = torch.stack(lst, dim=1)
-            batch["variable_names"].setdefault(slot, [])
-
-    if atmo_buf:
-        batch["atmospheric_variables"] = torch.stack(
-            [atmo_buf[k] for k in sorted(atmo_buf)], dim=1)
-        batch["pressure_levels"] = pl_list
-
-    if "atmospheric_variables" in batch and \
-       "atmospheric_variables" not in var_names:
-        batch["variable_names"]["atmospheric_variables"] = sorted(atmo_buf.keys())
+            ten = torch.from_numpy(ds[v].values.astype(DTYPE))
+            batch["species_variables"][v] = _maybe_fill_nan(ten, fill_nan)
+            species_list.append(v)
+        batch["batch_metadata"]["species_list"] = species_list
 
     return batch
 
@@ -464,7 +449,8 @@ def build_batches(report_path: Path,
                   out_dir: Path = BATCH_DIR,
                   start: str = _START_DATE,
                   end: str = _END_DATE,
-                  max_batches: int | None = None) -> None:
+                  max_batches: int | None = None,
+                  fill_nan: bool = False) -> None:
     
     out_dir.mkdir(parents=True, exist_ok=True)
     report = pd.read_parquet(report_path)
@@ -475,7 +461,7 @@ def build_batches(report_path: Path,
     for i, t0 in enumerate(tqdm(dates, desc="Building Batches")):
         t1 = t0 + pd.DateOffset(months = 1)
         if t1 > pd.Timestamp(end): break
-        batch = _assemble_window(report, t0, t1)
+        batch = _assemble_window(report, t0, t1, fill_nan=fill_nan)
         fname = f"batch_{t0:%Y-%m-%d}_to_{t1:%Y-%m-%d}.pt"
         torch.save(batch, out_dir / fname)
 
@@ -483,9 +469,10 @@ def build_batches(report_path: Path,
 if __name__=="__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--report", default="catalog_report.parquet", type=Path)
-    p.add_argument("--max-batches", type=int, default=25)
+    p.add_argument("--max-batches", type=int, default=None)
     p.add_argument("--start", default=_START_DATE)
     p.add_argument("--end", default=_END_DATE)
+    p.add_argument("--fill_nan", default=False)
     args = p.parse_args()
     build_batches(args.report, max_batches=args.max_batches,
-                  start=args.start, end=args.end)
+                  start=args.start, end=args.end, fill_nan=args.fill_nan)

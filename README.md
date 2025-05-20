@@ -3,7 +3,8 @@
 
 
 ## Description
-This repository contains the code used to engineer **BioCube: A Multimodal Dataset for Biodiversity**. The paper accompanying this repository can be found at: TBA
+This repository contains the code used to engineer **BioCube: A Multimodal Dataset for Biodiversity Research**. The produced dataset, can be found on the [BioCube's Hugging Face](https://huggingface.co/datasets/BioDT/BioCube) page with detailed descriptions of the modalities it contains.
+
 
 This codebase offers the below core functionalities:
 - Download
@@ -61,8 +62,10 @@ At this point, we can select any kind of modalities and slice them for specific 
 
 ![Alt text](img/data_batch.png "Data Batch Description")
 
+Creating **Batches** can be done in two settings based on the sampling frequence (daily and monthly) and requires that you have downloaded BioCube and setted up the path variables appropriately. 
 
-To create Batches, just call the function:
+### Daily
+To create daily Batches, just call the function:
 
 ```python
 create_dataset(
@@ -75,6 +78,20 @@ create_dataset(
     load_type="day-by-day",
 )
 ```
+
+### Monthly
+
+To create monthly Batches, just use the below workflow:
+```bash
+# First run
+python bfm_data/dataset_creation/batch_creation/scan_biocube.py --root biocube_data/data --out catalog_report.parquet
+# Then run
+python bfm_data/dataset_creation/batch_creation/build_batches_monthly.py
+```
+
+You can inspect the created Batches by using the `streamlit run batch_viewer.py --data_dir ./batches` that is located on the same folder as the previous scripts.
+
+To produce statistics from the Batches that can be used for downstream tasks (e.g. normalization), just run `python batch_stats.py batches/`
 
 ## Storage
 
@@ -98,6 +115,10 @@ See [`LICENSE.txt`](LICENSE.txt).
 This publication is part of the project Biodiversity Foundation Model of the research programme Computing Time on National Computing Facilities that is (co-) funded by the Dutch Research Council (NWO). We acknowledge NWO for providing access to Snellius, hosted by SURF through the Computing Time on National Computer Facilities call for proposals.
 This work used the Dutch national e-infrastructure with the support of the SURF Cooperative using grant no. EINF-10148*
 
+
+## Citation 
+
+If you find our work useful, please consider citing us! TBA
 
 ## Useful commands
 

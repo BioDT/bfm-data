@@ -28,7 +28,6 @@ VAR_CONFIG = {
     "vegetation_variables"    : [],
     "misc_variables"          : [],
 }
-
 BATCH_DIR = Path("batches")
 STATS_FILE = Path("batch_stats.parquet")
 DTYPE = np.float32
@@ -316,68 +315,49 @@ def _load_csv(csv_path: Path,
     return xr.Dataset(data_vars).chunk(CHUNKS) if data_vars else None
 
 
-def _load_species(path: Path,
-                  t0: pd.Timestamp,
-                  t1: pd.Timestamp,
-                  mask_on: bool = False) -> xr.Dataset:
-    """
-    Build an (S x 2 x 161 x 281) stack for the two calendar months
-    [t0, t1]  with zero imputation and a binary validity mask (optional).
+def _load_species(parquet_path: Path,
+                        t0: pd.Timestamp,
+                        t1: pd.Timestamp) -> xr.Dataset:
+    """Return xr.Dataset with every species, one raster per month (t0, t1)."""
+    global _MASTER_SPECIES
 
-    Each species `sp` generates two DataArrays:
-        sp         : distribution values  (0/1 or 0 if imputed)
-        sp_mask    : 1 where real obs exist, 0 where filled
-
-    Returns
-    -------
-    xr.Dataset
-        dims: time=2, latitude=161, longitude=281
-              (channel handled as separate *_mask variables)
-    """
     cols = ["Species", "Latitude", "Longitude", "Timestamp", "Distribution"]
-    df = pd.read_parquet(path, columns=cols)
+    df = pd.read_parquet(parquet_path, columns=cols)
 
-    df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-    df = df.dropna(subset=["Timestamp"])
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"], utc=True, errors="coerce").dt.tz_convert(None)
 
-    # keep only the two target months
-    target_periods = [t0.to_period("M"), t1.to_period("M")]
-    df["month"] = df["Timestamp"].dt.to_period("M")
-    df = df[df["month"].isin(target_periods)]
+    if _MASTER_SPECIES is None:
+        _MASTER_SPECIES = df["Species"].dropna().unique().tolist()
 
-    lat_map = {v: i for i, v in enumerate(GRID_LAT)}
-    lon_map = {v: j for j, v in enumerate(GRID_LON)}
+    df["month_period"] = df["Timestamp"].dt.to_period("M")
 
-    data_vars: Dict[str, xr.DataArray] = {}
+    periods = [pd.Timestamp(t0).to_period("M"),
+               pd.Timestamp(t1).to_period("M")]
 
-    for sp, grp in df.groupby("Species"):
-        # prepare 2 x H x W arrays, zero-filled
-        dist = np.zeros((2, EXPECTED_LAT, EXPECTED_LON), dtype=DTYPE)
-        mask = np.zeros_like(dist)
+    lat_map = {v:i for i,v in enumerate(GRID_LAT)}
+    lon_map = {v:j for j,v in enumerate(GRID_LON)}
 
-        for idx, month in enumerate(target_periods):
-            sub = grp[grp["month"] == month]
-            if sub.empty:
-                continue  # leave zeros (imputed)
-            li = sub["Latitude"].map(lat_map).to_numpy(dtype=int, na_value=-1)
-            lj = sub["Longitude"].map(lon_map).to_numpy(dtype=int, na_value=-1)
-            ok = (li >= 0) & (lj >= 0)
-            dist[idx, li[ok], lj[ok]] = sub.loc[ok, "Distribution"].astype(DTYPE)
-            mask[idx, li[ok], lj[ok]] = 1 # mark real obs | pressence
+    coords = {"time": [t0.to_numpy(), t1.to_numpy()],
+              "latitude": GRID_LAT,
+              "longitude": GRID_LON}
 
-        # attach coordinates / dims
-        t_coords = [month.to_timestamp() for month in target_periods]
+    data_vars = {}
+    for sp in _MASTER_SPECIES:
+        df_sp = df[df["Species"] == sp]
+        grids = []
+        for per in periods:
+            sub = df_sp[df_sp["month_period"] == per]
+            grid = np.zeros((EXPECTED_LAT, EXPECTED_LON), dtype=DTYPE)
+            if not sub.empty:
+                li = sub["Latitude"].map(lat_map).to_numpy(dtype=int, na_value=-1)
+                lj = sub["Longitude"].map(lon_map).to_numpy(dtype=int, na_value=-1)
+                ok = (li>=0)&(lj>=0)
+                grid[li[ok], lj[ok]] = sub.loc[ok, "Distribution"].astype(DTYPE).to_numpy()
+            grids.append(grid)
         data_vars[sp] = xr.DataArray(
-            dist,
-            coords={"time": t_coords, "latitude": GRID_LAT, "longitude": GRID_LON},
-            dims=("time", "latitude", "longitude"),
+            np.stack(grids, axis=0),
+            coords=coords, dims=("time","latitude","longitude")
         )
-        if mask_on:
-            data_vars[f"{sp}_mask"] = xr.DataArray(
-                mask,
-                coords={"time": t_coords, "latitude": GRID_LAT, "longitude": GRID_LON},
-                dims=("time", "latitude", "longitude"),
-            )
 
     return xr.Dataset(data_vars).chunk(CHUNKS)
 
@@ -435,12 +415,11 @@ def _assemble_window(report: pd.DataFrame,
     sp_df = report.query("modality=='species'")
     if not sp_df.empty:
         ds = _load_species(Path(sp_df.iloc[0].path), t0, t1)
-        species_list = []
+        slot = sp_df.iloc[0].planned_slot
         for v in ds.data_vars:
             ten = torch.from_numpy(ds[v].values.astype(DTYPE))
-            batch["species_variables"][v] = _maybe_fill_nan(ten, fill_nan)
-            species_list.append(v)
-        batch["batch_metadata"]["species_list"] = species_list
+            batch[slot][v] = _maybe_fill_nan(ten, fill_nan)
+        batch["batch_metadata"]["species_list"] = list(ds.data_vars)
 
     return batch
 

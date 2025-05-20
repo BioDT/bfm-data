@@ -3,11 +3,13 @@
 import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
-
+import geopandas as gpd
 import netCDF4 as nc
 import numpy as np
+import pandas as pd
 import requests
 import reverse_geocode
+from shapely.geometry import Point
 
 from bfm_data.config import paths
 from bfm_data.utils.geo import (
@@ -63,6 +65,10 @@ class CopernicusLandDownloader:
             region (str): The region name (e.g., 'Europe', 'Latin America').
         """
         _, iso_codes = get_countries_by_continent(region)
+
+        if 'CY' not in iso_codes:
+            iso_codes.append('CY')
+
         self.country_rectangles = get_bounding_boxes_for_countries(iso_codes)
 
     def filter_11th_day_files(self, file_urls: list) -> list:
@@ -140,61 +146,122 @@ class CopernicusLandDownloader:
             lon_points = np.arange(-180, 180 + 0.25, 0.25)
 
             if self.global_mode:
-                ndvi_data = {}
+                world_gdf = gpd.read_file("/projects/prjs1134/data/projects/biodt/storage/geoBoundaries/geoBoundaries CGAZ ADM0.geojson").set_crs("EPSG:4326")
+                world_gdf["shapeName"] = world_gdf["shapeName"].str.strip()
 
-                for lat_val in lat_points:
-                    for lon_val in lon_points:
-                        i = np.abs(lat - lat_val).argmin()
-                        j = np.abs(lon - lon_val).argmin()
-                        ndvi_value = ndvi[i, j]
+                lat_points = np.arange(-90, 90.25, 0.1)
+                lon_points = np.arange(-180, 180.25, 0.1)
 
-                        if ndvi_value != 255 and ndvi_value > self.ndvi_threshold:
-                            transformed_lon = lon_val if lon_val >= 0 else lon_val + 360
-                            coord = (lat_val, transformed_lon)
-                            country = reverse_geocode.get(coord)["country"]
-                            if country not in ndvi_data:
-                                ndvi_data[country] = []
-                            ndvi_data[country].append(
-                                (lat_val, transformed_lon, ndvi_value)
-                            )
+                grid_points = [Point(lon, lat) for lat in lat_points for lon in lon_points]
+                grid_df = pd.DataFrame({
+                    "Latitude": [pt.y for pt in grid_points],
+                    "Longitude": [pt.x for pt in grid_points],
+                    "geometry": grid_points
+                })
+                grid_gdf = gpd.GeoDataFrame(grid_df, geometry="geometry", crs="EPSG:4326")
+
+                joined = gpd.sjoin(grid_gdf, world_gdf[["geometry", "shapeName"]], predicate="within", how="inner")
+
+                def snap_to_grid(x, res=0.25):
+                    return np.round(x / res) * res
+
+                ndvi_data = {country: [] for country in joined["shapeName"].unique()}
+                tmp_country_data = {country: [] for country in joined["shapeName"].unique()}
+
+                for _, row in joined.iterrows():
+                    lat_val = row["Latitude"]
+                    lon_val = row["Longitude"]
+                    country = row["shapeName"]
+
+                    i = np.abs(lat - lat_val).argmin()
+                    j = np.abs(lon - lon_val).argmin()
+                    ndvi_value = ndvi[i, j]
+
+                    if ndvi_value != 255 and ndvi_value > self.ndvi_threshold:
+                        lat_025 = snap_to_grid(lat_val, 0.25)
+                        lon_025 = snap_to_grid(lon_val, 0.25)
+                        lon_025 = lon_025 if lon_025 >= 0 else lon_025 + 360
+                        tmp_country_data[country].append((lat_025, lon_025, ndvi_value))
+
+                for country, values in tmp_country_data.items():
+                    if values:
+                        df = pd.DataFrame(values, columns=["lat", "lon", "ndvi"])
+                        df = df.groupby(["lat", "lon"], as_index=False)["ndvi"].mean()
+                        ndvi_data[country] = list(df.itertuples(index=False, name=None))
+
+                return month_year, ndvi_data
 
             else:
-                ndvi_data = {
-                    get_country_name_from_iso(country): []
-                    for country in self.country_rectangles.keys()
+                world_gdf = gpd.read_file("/projects/prjs1134/data/projects/biodt/storage/geoBoundaries/geoBoundaries CGAZ ADM0.geojson").set_crs("EPSG:4326")
+                world_gdf["shapeName"] = world_gdf["shapeName"].str.strip()
+
+                target_names = [get_country_name_from_iso(code).strip() for code in self.country_rectangles]
+                if "Cyprus" not in target_names:
+                    target_names.append("Cyprus")
+
+                region_gdf = world_gdf[world_gdf["shapeName"].isin(target_names)].reset_index(drop=True)
+
+                if "Cyprus" not in region_gdf["shapeName"].values:
+                    cyprus_row = world_gdf[world_gdf["shapeName"] == "Cyprus"]
+                    if not cyprus_row.empty:
+                        region_gdf = pd.concat([region_gdf, cyprus_row], ignore_index=True)
+
+                manual_countries = {
+                    "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+                    "North Macedonia": "North Macedonia",
+                    "Moldova": "Moldova"
                 }
+                for country in manual_countries:
+                    if country not in region_gdf["shapeName"].values:
+                        row = world_gdf[world_gdf["shapeName"] == country]
+                        if not row.empty:
+                            region_gdf = pd.concat([region_gdf, row], ignore_index=True)
 
-                for country_iso, bbox in self.country_rectangles.items():
-                    min_lon, min_lat, max_lon, max_lat = bbox
+                lat_points = np.arange(32, 72, 0.1)
+                lon_points = np.arange(-25, 45, 0.1)
 
-                    for lat_val in lat_points:
-                        for lon_val in lon_points:
-                            if min_lon > max_lon:
-                                in_lon_range = lon_val >= min_lon or lon_val <= max_lon
-                            else:
-                                in_lon_range = min_lon <= lon_val <= max_lon
+                grid_points = [Point(lon, lat) for lat in lat_points for lon in lon_points]
+                grid_df = pd.DataFrame({
+                    "Latitude": [pt.y for pt in grid_points],
+                    "Longitude": [pt.x for pt in grid_points],
+                    "geometry": grid_points
+                })
+                grid_gdf = gpd.GeoDataFrame(grid_df, geometry="geometry", crs="EPSG:4326")
 
-                            if min_lat <= lat_val <= max_lat and in_lon_range:
-                                i = np.abs(lat - lat_val).argmin()
-                                j = np.abs(lon - lon_val).argmin()
-                                ndvi_value = ndvi[i, j]
+                joined = gpd.sjoin(grid_gdf, region_gdf[["geometry", "shapeName"]], predicate="within", how="inner")
 
-                                if (
-                                    ndvi_value != 255
-                                    and ndvi_value > self.ndvi_threshold
-                                ):
-                                    transformed_lon = (
-                                        lon_val if lon_val >= 0 else lon_val + 360
-                                    )
-                                    country_name = get_country_name_from_iso(
-                                        country_iso
-                                    )
-                                    ndvi_data[country_name].append(
-                                        (lat_val, transformed_lon, ndvi_value)
-                                    )
+                matched_countries = sorted(joined["shapeName"].unique())
+                expected_countries = sorted(region_gdf["shapeName"].unique())
 
-            dataset.close()
-            return month_year, ndvi_data
+                def snap_to_grid(x, res=0.25):
+                    return np.round(x / res) * res
+
+                ndvi_data = {country: [] for country in expected_countries}
+                tmp_country_data = {country: [] for country in expected_countries}
+
+                for _, row in joined.iterrows():
+                    lat_val = row["Latitude"]
+                    lon_val = row["Longitude"]
+                    country = row["shapeName"]
+
+                    i = np.abs(lat - lat_val).argmin()
+                    j = np.abs(lon - lon_val).argmin()
+                    ndvi_value = ndvi[i, j]
+
+                    if ndvi_value != 255 and ndvi_value > self.ndvi_threshold:
+                        lat_025 = snap_to_grid(lat_val, 0.25)
+                        lon_025 = snap_to_grid(lon_val, 0.25)
+                        lon_025 = lon_025 if lon_025 >= 0 else lon_025 + 360
+                        tmp_country_data[country].append((lat_025, lon_025, ndvi_value))
+
+                for country, values in tmp_country_data.items():
+                    if values:
+                        df = pd.DataFrame(values, columns=["lat", "lon", "ndvi"])
+                        df = df.groupby(["lat", "lon"], as_index=False)["ndvi"].mean()
+                        ndvi_data[country] = list(df.itertuples(index=False, name=None))
+
+                dataset.close()
+                return month_year, ndvi_data
 
         except Exception as e:
             print(f"Error processing the file {nc_file_path}: {e}")
@@ -313,12 +380,12 @@ def run_data_download(
     land_dir = paths.LAND_DIR
 
     if global_mode:
-        csv_file = f"{land_dir}/global_ndvi.csv"
+        csv_file = f"{land_dir}/global_ndvi_data.csv"
     elif region:
         region_cleaned = region.replace(" ", "_")
-        csv_file = f"{land_dir}/{region_cleaned}_ndvi_test.csv"
+        csv_file = f"{land_dir}/{region_cleaned}_ndvi_data.csv"
     else:
-        csv_file = f"{land_dir}/default_ndvi.csv"
+        csv_file = f"{land_dir}/default_ndvi_data.csv"
 
     downloader = CopernicusLandDownloader(
         links_url=links_url,

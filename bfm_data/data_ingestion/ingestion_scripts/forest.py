@@ -16,7 +16,7 @@ def run_forest_data_processing(region: str = None, global_mode: bool = True):
     data_file = paths.FOREST_LAND_FILE
 
     if region:
-        output_csv = f"{data_dir}/{region}_forest_data_test.csv"
+        output_csv = f"{data_dir}/{region}_forest_data.csv"
     else:
         output_csv = f"{data_dir}/global_forest_data.csv"
 

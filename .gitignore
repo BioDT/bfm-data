@@ -1,4 +1,5 @@
 slurm-*.out
+git-lfs/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

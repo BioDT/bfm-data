@@ -1,26 +1,25 @@
 #!/bin/bash
 set -e
-module purge
-module load 2023 CUDA/12.4.0
 
-# module load poetry/1.5.1-GCCcore-12.3.0
-module load Python/3.11.3-GCCcore-12.3.0
-# module load Python-bundle-PyPI/2023.06-GCCcore-12.3.0
-# module load SciPy-bundle/2023.07-gfbf-2023a
-# module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+if [[ $HOSTNAME =~ "snellius" ]]; then
+    module purge
+    module load 2024 Python/3.12.3-GCCcore-13.3.0
+fi
 
 # default venv name is venv
-venv_path="${1:-venv}"
+VENV_PATH="${1:-venv}"
 
-python3 -m venv $venv_path
+if test -d $VENV_PATH; then
+    echo "venv: $VENV_PATH already exists, using it"
+else
+    # create venv
+    echo "creating venv at: $VENV_PATH"
+    python3 -m venv $VENV_PATH
+fi
 
-source $venv_path/bin/activate
+source $VENV_PATH/bin/activate
 
-## via pip
-# pip install -U pip setuptools wheel
-# pip install -e .
-
-# via poetry (more precise versions)
 pip install poetry
-# global poetry may be broken!!!
-$venv_path/bin/poetry install
+poetry config virtualenvs.in-project true
+
+poetry install

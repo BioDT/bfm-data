@@ -34,6 +34,36 @@ DTYPE = np.float32
 CHUNKS = {"time": 1, "latitude": 160, "longitude": 280}
 YEAR_SUFFIX  = re.compile(r"_(\d{4})$")
 MMYY_SUFFIX  = re.compile(r"_(\d{1,2})/(\d{4})$")
+_MASTER_SPECIES = [
+    "1340361",
+    "1340503",
+    "1536449",
+    "1898286",
+    "1920506",
+    "2430567",
+    "2431885",
+    "2433433",
+    "2434779",
+    "2435240",
+    "2435261",
+    "2437394",
+    "2441454",
+    "2473958",
+    "2491534",
+    "2891770",
+    "3034825",
+    "4408498",
+    "5218786",
+    "5219073",
+    "5219173",
+    "5219219",
+    "5844449",
+    "8002952",
+    "8077224",
+    "8894817",
+    "8909809",
+    "9809229"
+]
 
 log = logging.getLogger("batch_builder")
 logging.basicConfig(level=logging.INFO,
@@ -448,7 +478,7 @@ def build_batches(report_path: Path,
 if __name__=="__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--report", default="catalog_report.parquet", type=Path)
-    p.add_argument("--max-batches", type=int, default=None)
+    p.add_argument("--max-batches", type=int, default=12)
     p.add_argument("--start", default=_START_DATE)
     p.add_argument("--end", default=_END_DATE)
     p.add_argument("--fill_nan", default=False)

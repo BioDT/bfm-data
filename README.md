@@ -118,7 +118,17 @@ This work used the Dutch national e-infrastructure with the support of the SURF 
 
 ## Citation 
 
-If you find our work useful, please consider citing us! TBA
+If you find our work useful, please consider citing us!
+
+```
+@article{stasinos2025biocube,
+  title={BioCube: A Multimodal Dataset for Biodiversity Research},
+  author={Stasinos, Stylianos and Mensio, Martino and Lazovik, Elena and Trantas, Athanasios},
+  journal={arXiv preprint arXiv:2505.11568},
+  year={2025}
+}
+```
+
 
 ## Useful commands
 

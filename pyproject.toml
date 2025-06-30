@@ -1,11 +1,11 @@
 [project]
 name = "bfm-data"
-version = "0.2.0"
-description = "BioCube - Engineering a Multimodal Dataset for Biodiversity"
+version = "0.3.0"
+description = "BioCube - Engineering a Multimodal Dataset for Biodiversity Research"
 authors = [
-    {name = "Stylianos Stasinos",email = "stylianos.stasinos@tno.nl"},
-    {name = "Martino Mensio",email = "martino.mensio@tno.nl"},
-    {name = "Athanasios Trantas",email = "thanasis.trantas@tno.nl"}
+    {name = "Stylianos Stasinos"},
+    {name = "Martino Mensio"},
+    {name = "Athanasios Trantas"}
 ]
 readme = "README.md"
 license = {file = "LICENSE.txt"}
@@ -61,6 +61,8 @@ dependencies = [
    "country-converter (>=1.2)",
    "reverse-geocode (>=1.6.5)",
    "typer (>=0.13.1)",
+   "streamlit (>=1.45.1,<2.0.0)",
+   "h5netcdf (>=1.6.1,<2.0.0)",
 ]
 
 [tool.poetry.scripts]

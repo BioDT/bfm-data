@@ -81,7 +81,11 @@ create_dataset(
 
 ### Monthly
 
-To create monthly Batches, just use the below workflow:
+To download BioCube and create monthly Batches, just run the below script:
+```bash
+bfm_data/dataset_creation/batch_creation/create_batches.sh
+```
+Or a step-by-step workflow: 
 ```bash
 # First run
 python bfm_data/dataset_creation/batch_creation/scan_biocube.py --root biocube_data/data --out catalog_report.parquet

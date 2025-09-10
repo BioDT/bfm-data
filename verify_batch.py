@@ -9,7 +9,7 @@ app = typer.Typer(pretty_exceptions_enable=False)
 
 
 def format_prefix(prefix: List[str]) -> str:
-    return ".".join(prefix)
+    return ".".join([str(el) for el in prefix])
 
 
 def visit_obj(obj, prefix: List[str] = []):
